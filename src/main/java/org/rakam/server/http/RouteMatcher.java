@@ -1,6 +1,5 @@
 package org.rakam.server.http;
 
-import com.google.common.base.Preconditions;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
@@ -8,6 +7,7 @@ import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.util.AttributeKey;
 
 import java.util.HashMap;
+import java.util.Objects;
 
 /**
  * Created by buremba <Burak Emre Kabakcı> on 22/07/14 06:03.
@@ -107,7 +107,7 @@ public class RouteMatcher {
         }
 
         public void add(String lastPath, HttpMethod method, HttpRequestHandler handler) {
-            Preconditions.checkNotNull(path, "path is not configured");
+            Objects.requireNonNull(path, "path is not configured");
             routeMatcher.add(method, path + lastPath, handler);
         }
     }

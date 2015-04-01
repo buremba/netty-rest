@@ -28,11 +28,6 @@
             <artifactId>netty-all</artifactId>
             <version>4.0.23.Final</version>
         </dependency>
-        <dependency>
-            <groupId>com.google.inject.extensions</groupId>
-            <artifactId>guice-multibindings</artifactId>
-            <version>4.0-beta5</version>
-        </dependency>
     </dependencies>
 
     <build>
