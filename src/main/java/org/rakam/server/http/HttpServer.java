@@ -21,6 +21,8 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.internal.logging.InternalLogger;
+import io.netty.util.internal.logging.InternalLoggerFactory;
 import org.rakam.server.http.annotations.JsonRequest;
 
 import javax.ws.rs.Path;
@@ -47,6 +49,7 @@ public class HttpServer {
     private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression: \n %s";
 
     public final RouteMatcher routeMatcher;
+    private final static InternalLogger LOGGER =InternalLoggerFactory.getInstance(HttpServer.class);
 
     EventLoopGroup bossGroup;
     EventLoopGroup workerGroup;
@@ -239,7 +242,7 @@ public class HttpServer {
             String encode = encodeJson(errorMessage(e.getMessage(), statusCode));
             request.response(encode, HttpResponseStatus.valueOf(statusCode)).end();
         } catch (Exception e) {
-//            LOGGER.error("An uncaught exception raised while processing request.", e);
+            LOGGER.error("An uncaught exception raised while processing request.", e);
             ObjectNode errorMessage = errorMessage("error processing request.", HttpResponseStatus.INTERNAL_SERVER_ERROR.code());
             request.response(encodeJson(errorMessage), HttpResponseStatus.BAD_REQUEST).end();
         }
@@ -315,7 +318,7 @@ public class HttpServer {
 
         String bytes;
         try {
-            bytes = mapper.writeValueAsString(jsonNodeFactory);
+            bytes = mapper.writeValueAsString(obj);
         } catch (JsonProcessingException e) {
             throw new RuntimeException();
         }
