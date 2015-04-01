@@ -1,6 +1,5 @@
 package org.rakam.server.http;
 
-import com.sun.tools.javac.code.Type;
 import org.rakam.server.http.annotations.JsonRequest;
 
 import javax.annotation.processing.AbstractProcessor;
@@ -10,6 +9,7 @@ import javax.annotation.processing.RoundEnvironment;
 import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.Element;
+import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
 import javax.lang.model.type.TypeKind;
 import javax.tools.Diagnostic;
@@ -48,12 +48,14 @@ public class HttpServiceProcessor extends AbstractProcessor {
                         JsonRequest.class.getCanonicalName(),
                         Path.class.getCanonicalName()));
             }
-            if(((Type.MethodType) element.asType()).getReturnType().getKind() == TypeKind.VOID) {
+
+            // we know that JsonRequest can only be used in method declarations so the Type must be ExecutableElement
+            if(((ExecutableElement) element.asType()).getReturnType().getKind() == TypeKind.VOID) {
                 messager.printMessage(Diagnostic.Kind.ERROR, format("%s method can't have void return type because it has %s annotation",
                         element.toString(),
                         JsonRequest.class.getCanonicalName()));
             }
-            if(((Type.MethodType) element.asType()).getParameterTypes().size() != 1) {
+            if(((ExecutableElement) element.asType()).getParameters().size() != 1) {
                 messager.printMessage(Diagnostic.Kind.ERROR, format("%s method must have exactly one parameter because it has %s annotation",
                         element.toString(),
                         JsonRequest.class.getCanonicalName()));
