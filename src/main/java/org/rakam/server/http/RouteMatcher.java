@@ -1,12 +1,18 @@
 package org.rakam.server.http;
 
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
+import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.util.AttributeKey;
 
+import java.util.AbstractMap;
 import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -16,6 +22,7 @@ public class RouteMatcher {
     HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
     private HttpRequestHandler noMatch = request -> request.response("404", HttpResponseStatus.NOT_FOUND).end();
     public final AttributeKey<String> PATH = AttributeKey.valueOf("/path");
+    private List<Map.Entry<PatternBinding, HttpRequestHandler>> prefixRoutes = new LinkedList<>();
 
     public void handle(ChannelHandlerContext ctx, WebSocketFrame frame) {
         String path = ctx.attr(PATH).get();
@@ -37,30 +44,39 @@ public class RouteMatcher {
             path = path.substring(0, lastIndex);
         // TODO: Make it optional
         if(request.getMethod() == HttpMethod.OPTIONS) {
-            request.end();
+            request.response(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)).end();
         }
 
         final HttpRequestHandler handler = routes.get(new PatternBinding(request.getMethod(), path));
         if (handler != null) {
             if(handler instanceof WebSocketService) {
-                request.getContext().attr(PATH).set(path);
+                request.context().attr(PATH).set(path);
             }
             handler.handle(request);
         } else {
+            for (Map.Entry<PatternBinding, HttpRequestHandler> prefixRoute : prefixRoutes) {
+                if(path.startsWith(prefixRoute.getKey().pattern)) {
+                    prefixRoute.getValue().handle(request);
+                    return;
+                }
+            }
             noMatch.handle(request);
         }
     }
 
     public void add(String path, WebSocketService handler) {
-        routes.put(new PatternBinding(HttpMethod.GET, path), handler);
+        PatternBinding key = new PatternBinding(HttpMethod.GET, path);
+        routes.put(key, handler);
     }
 
     public void add(HttpMethod method, String path, HttpRequestHandler handler) {
-        routes.put(new PatternBinding(method, path), handler);
-    }
-
-    public void remove(HttpMethod method, String pattern, HttpRequestHandler handler) {
-        routes.remove(new PatternBinding(method, pattern));
+        if(path.endsWith("*")) {
+            String substring = path.substring(0, path.length() - 1).replaceAll("^/+", "");
+            routes.put(new PatternBinding(method, substring), handler);
+            prefixRoutes.add(new AbstractMap.SimpleImmutableEntry<>(new PatternBinding(method, substring), handler));
+        }else {
+            routes.put(new PatternBinding(method, path), handler);
+        }
     }
 
     public void noMatch(HttpRequestHandler handler) {
@@ -108,7 +124,7 @@ public class RouteMatcher {
 
         public void add(String lastPath, HttpMethod method, HttpRequestHandler handler) {
             Objects.requireNonNull(path, "path is not configured");
-            routeMatcher.add(method, path + lastPath, handler);
+            routeMatcher.add(method, path.equals("/") ? lastPath : path + lastPath, handler);
         }
     }
 }

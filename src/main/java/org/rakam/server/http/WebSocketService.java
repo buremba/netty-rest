@@ -57,12 +57,12 @@ public abstract class WebSocketService implements HttpRequestHandler {
                 getWebSocketLocation(request), null, true);
         handshaker = wsFactory.newHandshaker(request.getRequest());
         if (handshaker == null) {
-            WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(request.getContext().channel());
+            WebSocketServerHandshakerFactory.sendUnsupportedVersionResponse(request.context().channel());
         } else {
             HttpRequest request1 = request.getRequest();
             DefaultFullHttpRequest defaultFullHttpRequest = new DefaultFullHttpRequest(request1.getProtocolVersion(), request1.getMethod(), request1.getUri());
             defaultFullHttpRequest.headers().set(request1.headers());
-            handshaker.handshake(request.getContext().channel(), defaultFullHttpRequest);
+            handshaker.handshake(request.context().channel(), defaultFullHttpRequest);
             onOpen(new WebSocketRequest(request));
         }
     }
@@ -96,7 +96,7 @@ public abstract class WebSocketService implements HttpRequestHandler {
         }
 
         public ChannelHandlerContext context() {
-            return request.getContext();
+            return request.context();
         }
     }
 }

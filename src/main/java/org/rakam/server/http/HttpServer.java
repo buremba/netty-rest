@@ -40,6 +40,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -104,6 +105,10 @@ public class HttpServer {
         this(httpServicePlugins, websocketServices, swagger, new NioEventLoopGroup(), DEFAULT_MAPPER);
     }
 
+    public void setNotFoundHandler(HttpRequestHandler handler) {
+        routeMatcher.noMatch(handler);
+    }
+
     private void registerWebSocketPaths(Set<WebSocketService> webSocketServices) {
         webSocketServices.forEach(service -> {
             String path = service.getClass().getAnnotation(Path.class).value();
@@ -159,9 +164,7 @@ public class HttpServer {
                                         method.getClass().getName(), method.getName(), e));
                             }
 
-                            microRouteMatcher.add(lastPath, httpMethod, handler);
-                            if (lastPath.equals("/"))
-                                microRouteMatcher.add("", httpMethod, handler);
+                            microRouteMatcher.add(lastPath.equals("/") ? "": lastPath, httpMethod, handler);
                         }
                     }
                     if (!mapped && jsonRequest != null) {
@@ -184,28 +187,29 @@ public class HttpServer {
 
     private static class RequestParameter {
         public final String name;
-        public final Class type;
+        public final Type type;
         public final boolean required;
 
-        private RequestParameter(String name, Class type, boolean required) {
+        private RequestParameter(String name, Type type, boolean required) {
             this.name = name;
             this.type = type;
             this.required = required;
         }
     }
 
-    private HttpRequestHandler createParametrizedPostRequestHandler(HttpService service, Method method) {
+    private HttpRequestHandler createParametrizedPostRequestHandler(HttpService service, Method method) throws JsonProcessingException {
         ArrayList<RequestParameter> objects = new ArrayList<>();
         for (Parameter parameter : method.getParameters()) {
             ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
             if(apiParam != null) {
-                objects.add(new RequestParameter(apiParam.name(), parameter.getType(), apiParam == null ? false : apiParam.required()));
+                objects.add(new RequestParameter(apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
             }else {
-                objects.add(new RequestParameter(parameter.getName(), parameter.getType(), false));
+                objects.add(new RequestParameter(parameter.getName(), parameter.getParameterizedType(), false));
             }
         }
 
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
+        String bodyError = mapper.writeValueAsString(errorMessage("Body must be an json object.", 400));
 
         return new HttpRequestHandler() {
             @Override
@@ -217,7 +221,7 @@ public class HttpServer {
                         try {
                             node = (ObjectNode) mapper.readTree(body);
                         } catch (ClassCastException e) {
-                            request.jsonResponse(errorMessage("Body must be an json object.", 400), BAD_REQUEST).end();
+                            request.response(bodyError, BAD_REQUEST).end();
                             return;
                         } catch (UnrecognizedPropertyException e) {
                         returnError(request, "Unrecognized field: " + e.getPropertyName(), 400);
@@ -240,10 +244,11 @@ public class HttpServer {
                         for (RequestParameter param : objects) {
                             JsonNode value = node.get(param.name);
                             if(param.required && (value == null || value == NullNode.getInstance())) {
-                                request.jsonResponse(errorMessage(param.name+" parameter is required", 400), BAD_REQUEST).end();
+                                returnError(request, param.name + " parameter is required", 400);
                                 return;
                             }
-                            values.add(mapper.convertValue(value, param.type));
+                            ;
+                            values.add(mapper.convertValue(value, mapper.constructType(param.type)));
                         }
 
                         Object invoke;
@@ -254,7 +259,7 @@ public class HttpServer {
                             return;
                         } catch (InvocationTargetException e) {
                             e.getTargetException().printStackTrace();
-                            request.jsonResponse(errorMessage(e.getMessage(), 500), HttpResponseStatus.INTERNAL_SERVER_ERROR).end();
+                            returnError(request, e.getMessage(), 500);
                             return;
                         } catch (HttpRequestException e) {
                             int statusCode = e.getStatusCode();
@@ -271,7 +276,12 @@ public class HttpServer {
                         if (isAsync) {
                             handleAsyncJsonRequest(service, request, (CompletionStage) invoke);
                         } else {
-                            request.jsonResponse(invoke).end();
+                            try {
+                                request.response(mapper.writeValueAsString(invoke)).end();
+                            } catch (JsonProcessingException e) {
+                                returnError(request, "error while serializing response: "+e.getMessage(), 500);
+                            }
+
                         }
                     }
                 });

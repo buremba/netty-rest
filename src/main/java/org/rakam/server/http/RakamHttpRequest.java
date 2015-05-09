@@ -1,7 +1,5 @@
 package org.rakam.server.http;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -33,11 +31,9 @@ import static io.netty.util.CharsetUtil.UTF_8;
  * Created by buremba <Burak Emre Kabakcı> on 25/10/14 19:04.
  */
 public class RakamHttpRequest implements HttpRequest {
-    private final static ObjectMapper mapper = new ObjectMapper();
-
     private final ChannelHandlerContext ctx;
     private io.netty.handler.codec.http.HttpRequest request;
-    protected FullHttpResponse response;
+    private FullHttpResponse response;
     private Consumer<String> bodyHandler;
     private ByteBuf emptyBuffer  = Unpooled.wrappedBuffer(new byte[0]);
 
@@ -51,10 +47,6 @@ public class RakamHttpRequest implements HttpRequest {
 
     HttpRequest getRequest() {
         return request;
-    }
-
-    ChannelHandlerContext getContext() {
-        return ctx;
     }
 
     @Override
@@ -93,9 +85,8 @@ public class RakamHttpRequest implements HttpRequest {
         return request.headers();
     }
 
-    public RakamHttpRequest putHeader(String key, Object value) {
-        response.headers().set(key, value);
-        return this;
+    public ChannelHandlerContext context() {
+        return ctx;
     }
 
     @Override
@@ -130,20 +121,8 @@ public class RakamHttpRequest implements HttpRequest {
         return this;
     }
 
-    public RakamHttpRequest jsonResponse(Object content, HttpResponseStatus status) {
-        String data;
-        try {
-            data = mapper.writeValueAsString(content);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException(e);
-        }
-        final ByteBuf byteBuf = Unpooled.wrappedBuffer(data.getBytes(UTF_8));
-        response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, byteBuf);
-        return this;
-    }
-
-    public RakamHttpRequest jsonResponse(Object content) {
-        jsonResponse(content, HttpResponseStatus.OK);
+    public RakamHttpRequest response(FullHttpResponse response) {
+        this.response = response;
         return this;
     }
 
@@ -200,7 +179,7 @@ public class RakamHttpRequest implements HttpRequest {
         return new StreamResponse(ctx);
     }
 
-    public static class StreamResponse {
+    public class StreamResponse {
         private final ChannelHandlerContext ctx;
 
         public StreamResponse(ChannelHandlerContext ctx) {
@@ -220,15 +199,8 @@ public class RakamHttpRequest implements HttpRequest {
             return ctx.isRemoved();
         }
 
-        public StreamResponse send(String event, Object data) {
-            String json;
-            try {
-                json = mapper.writeValueAsString(data);
-            } catch (JsonProcessingException e) {
-                send(event, "couldn't serialize json object: " + e.getMessage());
-                return this;
-            }
-            return send(event, json);
+        public void listenClose(Runnable runnable) {
+            ctx.channel().closeFuture().addListener(future -> runnable.run());
         }
 
         public void end() {

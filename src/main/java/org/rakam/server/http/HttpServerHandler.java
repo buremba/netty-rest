@@ -25,8 +25,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     public HttpServerHandler(RouteMatcher routes) {
         this.routes = routes;
     }
-
-    @Override
+        @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
         body.delete(0, body.length());
     }
