@@ -16,6 +16,8 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -37,8 +39,7 @@ public class RakamHttpRequest implements HttpRequest {
     private Consumer<String> bodyHandler;
     private ByteBuf emptyBuffer  = Unpooled.wrappedBuffer(new byte[0]);
 
-    private String path;
-    private Map<String, List<String>> params;
+    private QueryStringDecoder qs;
 
     public RakamHttpRequest(ChannelHandlerContext ctx, HttpRequest request) {
         this.ctx = ctx;
@@ -127,21 +128,26 @@ public class RakamHttpRequest implements HttpRequest {
     }
 
     public Map<String, List<String>> params() {
-        if (params == null) {
-            QueryStringDecoder qs = new QueryStringDecoder(request.getUri());
-            path = qs.path();
-            params = qs.parameters();
+        if (qs == null) {
+            qs = new QueryStringDecoder(request.getUri());
         }
-        return params;
+        return qs.parameters();
     }
 
     public String path() {
-        if (path == null) {
-            QueryStringDecoder qs = new QueryStringDecoder(request.getUri());
-            path = qs.path();
-            params = qs.parameters();
+        try {
+            URL url = new URL(request.getUri());
+            String path = url.getPath()+"?"+url.getQuery();
+            if (qs == null) {
+                qs = new QueryStringDecoder(path);
+            }
+            return qs.path();
+        } catch (MalformedURLException e) {
+            if (qs == null) {
+                qs = new QueryStringDecoder(request.getUri());
+            }
+            return qs.path();
         }
-        return path;
     }
 
     public void end() {

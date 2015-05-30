@@ -38,13 +38,14 @@ public class RouteMatcher {
     }
 
     public void handle(RakamHttpRequest request) {
-        String path = request.path();
+        String path = cleanPath(request.path());
         int lastIndex = path.length() - 1;
         if(path.charAt(lastIndex) == '/')
             path = path.substring(0, lastIndex);
         // TODO: Make it optional
         if(request.getMethod() == HttpMethod.OPTIONS) {
-            request.response(new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK)).end();
+            DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            request.response(response).end();
         }
 
         final HttpRequestHandler handler = routes.get(new PatternBinding(request.getMethod(), path));
@@ -62,6 +63,24 @@ public class RouteMatcher {
             }
             noMatch.handle(request);
         }
+    }
+
+    private String cleanPath(String path) {
+        StringBuilder builder = new StringBuilder();
+        boolean edge = false;
+        int length = path.length();
+        for (int i = 0; i < length; i++) {
+            char c = path.charAt(i);
+            if (c == '/') {
+                if(!edge)
+                    builder.append(c);
+                edge = true;
+            } else {
+                builder.append(c);
+                edge = false;
+            }
+        }
+        return builder.toString();
     }
 
     public void add(String path, WebSocketService handler) {
