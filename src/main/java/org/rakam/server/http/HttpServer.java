@@ -151,7 +151,7 @@ public class HttpServer {
                             try {
                                 if(jsonRequest != null && httpMethod == HttpMethod.GET) {
                                     throw new IllegalStateException("JsonRequest annotation can only be used with POST requests");
-                                }else if (httpMethod == HttpMethod.POST) {
+                                }else if (jsonRequest != null && httpMethod == HttpMethod.POST) {
                                     mapped = true;
 
                                     if(method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class)!=null) {

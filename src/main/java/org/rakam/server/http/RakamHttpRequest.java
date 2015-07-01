@@ -16,8 +16,6 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 
-import java.net.MalformedURLException;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -135,19 +133,10 @@ public class RakamHttpRequest implements HttpRequest {
     }
 
     public String path() {
-        try {
-            URL url = new URL(request.getUri());
-            String path = url.getPath()+"?"+url.getQuery();
-            if (qs == null) {
-                qs = new QueryStringDecoder(path);
-            }
-            return qs.path();
-        } catch (MalformedURLException e) {
-            if (qs == null) {
-                qs = new QueryStringDecoder(request.getUri());
-            }
-            return qs.path();
+        if (qs == null) {
+            qs = new QueryStringDecoder(request.getUri());
         }
+        return qs.path();
     }
 
     public void end() {
