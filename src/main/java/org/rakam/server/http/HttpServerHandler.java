@@ -7,9 +7,9 @@ package org.rakam.server.http;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.DefaultLastHttpContent;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.util.CharsetUtil;
 
@@ -21,6 +21,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     private RakamHttpRequest request;
     private RouteMatcher routes;
     private StringBuilder body = new StringBuilder(2 << 15);
+    private static String EMPTY_BODY = "";
 
     public HttpServerHandler(RouteMatcher routes) {
         this.routes = routes;
@@ -40,7 +41,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
             } else {
                 routes.handle(request);
             }
-        } else if (msg instanceof DefaultLastHttpContent) {
+        } else if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
                 String s = chunk.content().toString(CharsetUtil.UTF_8);
@@ -51,6 +52,11 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
                     request.handleBody(body.toString());
                 }
                 chunk.release();
+            } else {
+                // even if body content is empty, call request.handleBody method.
+                if (request.getBodyHandler()!=null) {
+                    request.handleBody(EMPTY_BODY);
+                }
             }
         } else if (msg instanceof HttpContent) {
             HttpContent chunk = (HttpContent) msg;

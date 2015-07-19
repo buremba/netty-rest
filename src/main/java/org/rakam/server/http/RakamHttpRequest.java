@@ -93,6 +93,10 @@ public class RakamHttpRequest implements HttpRequest {
         return request.getDecoderResult();
     }
 
+    protected Consumer<String> getBodyHandler() {
+        return bodyHandler;
+    }
+
     @Override
     public void setDecoderResult(DecoderResult result) {
         request.setDecoderResult(result);

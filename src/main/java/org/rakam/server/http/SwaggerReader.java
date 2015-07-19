@@ -1,15 +1,8 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.rakam.server.http.annotations.Api;
-import org.rakam.server.http.annotations.ApiImplicitParams;
-import org.rakam.server.http.annotations.ApiOperation;
-import org.rakam.server.http.annotations.ApiParam;
-import org.rakam.server.http.annotations.ApiResponse;
-import org.rakam.server.http.annotations.ApiResponses;
-import org.rakam.server.http.annotations.Authorization;
-import org.rakam.server.http.annotations.AuthorizationScope;
 import com.wordnik.swagger.converter.ModelConverters;
+import com.wordnik.swagger.jackson.ModelResolver;
 import com.wordnik.swagger.models.ArrayModel;
 import com.wordnik.swagger.models.Model;
 import com.wordnik.swagger.models.ModelImpl;
@@ -24,15 +17,21 @@ import com.wordnik.swagger.models.SecurityScope;
 import com.wordnik.swagger.models.Swagger;
 import com.wordnik.swagger.models.Tag;
 import com.wordnik.swagger.models.parameters.BodyParameter;
+import com.wordnik.swagger.models.parameters.FormParameter;
 import com.wordnik.swagger.models.parameters.Parameter;
-import com.wordnik.swagger.models.parameters.QueryParameter;
 import com.wordnik.swagger.models.parameters.SerializableParameter;
 import com.wordnik.swagger.models.properties.ArrayProperty;
 import com.wordnik.swagger.models.properties.MapProperty;
 import com.wordnik.swagger.models.properties.Property;
 import com.wordnik.swagger.models.properties.RefProperty;
-import com.wordnik.swagger.util.Json;
-import org.rakam.server.http.annotations.ApiParamIgnore;
+import org.rakam.server.http.annotations.Api;
+import org.rakam.server.http.annotations.ApiImplicitParams;
+import org.rakam.server.http.annotations.ApiOperation;
+import org.rakam.server.http.annotations.ApiParam;
+import org.rakam.server.http.annotations.ApiResponse;
+import org.rakam.server.http.annotations.ApiResponses;
+import org.rakam.server.http.annotations.Authorization;
+import org.rakam.server.http.annotations.AuthorizationScope;
 import org.rakam.server.http.annotations.ParamBody;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
@@ -42,7 +41,6 @@ import javax.ws.rs.Consumes;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.Produces;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -56,18 +54,21 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Created by buremba <Burak Emre Kabakcı> on 24/04/15 22:44.
  */
 public class SwaggerReader {
-    Logger LOGGER = LoggerFactory.getLogger(SwaggerReader.class);
+    private final Logger LOGGER = LoggerFactory.getLogger(SwaggerReader.class);
 
-    Swagger swagger;
-    static ObjectMapper m = Json.mapper();
+    private final Swagger swagger;
+    private final ModelConverters modelConverters;
 
-    public SwaggerReader(Swagger swagger) {
+    public SwaggerReader(Swagger swagger, ObjectMapper mapper) {
         this.swagger = swagger;
+        modelConverters = new ModelConverters();
+        modelConverters.addConverter(new ModelResolver(mapper));
     }
 
     public Swagger read(Class cls) {
@@ -75,8 +76,6 @@ public class SwaggerReader {
     }
 
     protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, Map<String, Tag> parentTags, List<Parameter> parentParameters) {
-        if (swagger == null)
-            swagger = new Swagger();
         Api api = cls.getAnnotation(Api.class);
         Map<String, SecurityScope> globalScopes = new HashMap<>();
 
@@ -311,14 +310,14 @@ public class SwaggerReader {
                 String name = header.name();
                 if (!"".equals(name)) {
                     if (responseHeaders == null)
-                        responseHeaders = new HashMap<String, Property>();
+                        responseHeaders = new HashMap<>();
                     String description = header.description();
                     Class<?> cls = header.response();
                     String container = header.responseContainer();
 
                     if (!cls.equals(java.lang.Void.class) && !"void".equals(cls.toString())) {
-                        Property responseProperty = null;
-                        Property property = ModelConverters.getInstance().readAsProperty(cls);
+                        Property responseProperty;
+                        Property property = modelConverters.readAsProperty(cls);
                         if (property != null) {
                             if ("list".equalsIgnoreCase(container))
                                 responseProperty = new ArrayProperty(property);
@@ -392,7 +391,6 @@ public class SwaggerReader {
             responseClass = getActualReturnClass(method);
             if (!responseClass.equals(java.lang.Void.class) && !"void".equals(responseClass.toString()) && responseClass.getAnnotation(Api.class) == null) {
                 LOGGER.debug("reading model " + responseClass);
-                Map<String, Model> models = ModelConverters.getInstance().readAll(t);
             }
         }
         if (responseClass != null
@@ -400,7 +398,7 @@ public class SwaggerReader {
                 && responseClass.getAnnotation(Api.class) == null) {
             if (isPrimitive(responseClass)) {
                 Property responseProperty;
-                Property property = ModelConverters.getInstance().readAsProperty(responseClass);
+                Property property = modelConverters.readAsProperty(responseClass);
                 if (property != null) {
                     if ("list".equalsIgnoreCase(responseContainer))
                         responseProperty = new ArrayProperty(property);
@@ -414,9 +412,9 @@ public class SwaggerReader {
                             .headers(defaultResponseHeaders));
                 }
             } else if (!responseClass.equals(java.lang.Void.class) && !"void".equals(responseClass.toString())) {
-                Map<String, Model> models = ModelConverters.getInstance().read(responseClass);
+                Map<String, Model> models = modelConverters.read(responseClass);
                 if (models.size() == 0) {
-                    Property p = ModelConverters.getInstance().readAsProperty(responseClass);
+                    Property p = modelConverters.readAsProperty(responseClass);
                     operation.response(200, new Response()
                             .description("successful operation")
                             .schema(p)
@@ -437,7 +435,7 @@ public class SwaggerReader {
                             .headers(defaultResponseHeaders));
                     swagger.model(key, models.get(key));
                 }
-                models = ModelConverters.getInstance().readAll(responseClass);
+                models = modelConverters.readAll(responseClass);
                 for (String key : models.keySet()) {
                     swagger.model(key, models.get(key));
                 }
@@ -477,12 +475,12 @@ public class SwaggerReader {
 
                 responseClass = apiResponse.response();
                 if (responseClass != null && !responseClass.equals(java.lang.Void.class)) {
-                    Map<String, Model> models = ModelConverters.getInstance().read(responseClass);
+                    Map<String, Model> models = modelConverters.read(responseClass);
                     for (String key : models.keySet()) {
                         response.schema(new RefProperty().asDefault(key));
                         swagger.model(key, models.get(key));
                     }
-                    models = ModelConverters.getInstance().readAll(responseClass);
+                    models = modelConverters.readAll(responseClass);
                     for (String key : models.keySet()) {
                         swagger.model(key, models.get(key));
                     }
@@ -500,45 +498,87 @@ public class SwaggerReader {
         java.lang.reflect.Parameter[] parameters = method.getParameters();
 
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
-            Field[] fields = method.getParameters()[0].getType().getFields();
-            for (Field field : fields) {
-                if (field.isAnnotationPresent(ApiParam.class)) {
-                    getParameters(field.getClass(), field.getType(), field.getAnnotations()).forEach(operation::parameter);
-                } else if (!field.isAnnotationPresent(ApiParamIgnore.class)) {
-                    QueryParameter parameter = new QueryParameter();
-                    parameter.name(field.getName());
+            Class<?> type = method.getParameters()[0].getType();
+            Map<String, Model> read = modelConverters.read(type);
+            swagger.addDefinition(type.getName(), read.get(type.getSimpleName()));
+            BodyParameter bodyParameter = new BodyParameter();
+            RefModel refModel = new RefModel();
+            refModel.set$ref(type.getName());
+            bodyParameter.schema(refModel);
+            bodyParameter.name(type.getSimpleName());
+            operation.parameter(bodyParameter);
+        } else if (parameters.length == 0) {
+        } else {
+            java.lang.reflect.Parameter firstParameter = parameters[0];
+            if (firstParameter.isAnnotationPresent(ApiParam.class)) {
 
-                    Property schema = ModelConverters.getInstance().readAsProperty(field.getType());
-                    if (schema != null) {
-                        parameter.setProperty(schema);
-                        if (schema instanceof ArrayProperty) {
-                            parameter.setItems(((ArrayProperty) schema).getItems());
+                List<String> params = Arrays.asList("string", "number", "integer", "boolean");
+
+                List<Property> properties = Arrays.stream(parameters).map(parameter ->
+                        modelConverters.readAsProperty(parameter.getParameterizedType())).collect(Collectors.toList());
+
+                boolean isSchema = properties.stream().anyMatch(property -> params.indexOf(property.getType()) == -1 &&
+                        !((property instanceof ArrayProperty) && params.indexOf(((ArrayProperty) property).getItems().getType()) > -1));
+
+                List<Parameter> list;
+                if(!isSchema) {
+                    list = Arrays.stream(parameters).map(parameter -> {
+                        ApiParam ann = parameter.getAnnotation(ApiParam.class);
+                        if (ann == null) {
+                            throw new IllegalStateException();
+                        }
+                        Property property = modelConverters.readAsProperty(parameter.getParameterizedType());
+
+                        FormParameter formParameter = new FormParameter();
+
+                        formParameter.setRequired(property.getRequired());
+                        formParameter.setName(ann.name());
+                        formParameter.setDescription(property.getDescription());
+                        formParameter.setDefaultValue(property.getDefault());
+
+                        formParameter.setType(property.getType());
+                        formParameter.setFormat(property.getFormat());
+                        if (property instanceof ArrayProperty) {
+                            formParameter.setItems(((ArrayProperty) property).getItems());
+                        }
+                        return formParameter;
+                    }).collect(Collectors.toList());
+                } else {
+                    ModelImpl model = new ModelImpl();
+                    for (int i = 0; i < properties.size(); i++) {
+                        Property property = properties.get(i);
+                        java.lang.reflect.Parameter parameter = parameters[i];
+                        ApiParam ann = parameter.getAnnotation(ApiParam.class);
+                        model.addProperty(ann.name(), property);
+                        if(property instanceof RefProperty) {
+                            Map<String, Model> subProperty = modelConverters.read(parameter.getParameterizedType());
+                            String simpleRef = ((RefProperty) property).getSimpleRef();
+                            swagger.addDefinition(simpleRef, subProperty.get(simpleRef));
+                        }
+                        if (property instanceof ArrayProperty) {
+                            ArrayModel arrayModel = new ArrayModel();
+                            Property items = ((ArrayProperty) property).getItems();
+                            arrayModel.items(items);
+                            if (items instanceof RefProperty) {
+                                Type type = ((ParameterizedType) parameter.getParameterizedType()).getActualTypeArguments()[0];
+                                // it reads fields of classes but what we actually want to do is to make the class serializable with Jackson library.
+                                // therefore, it's a better idea to use constructor that has @JsonCreator annotation.
+                                Map<String, Model> read = modelConverters.read(type);
+                                model.addProperty(property.getName(), null);
+
+                                String refName = ((RefProperty) items).getSimpleRef();
+                                swagger.addDefinition(refName, read.get(refName));
+                            }
                         }
                     }
 
-                    operation.parameter(parameter);
+                    BodyParameter bodyParameter = new BodyParameter();
+                    bodyParameter.setSchema(model);
+                    String name = method.getDeclaringClass().getSimpleName() + "_" + method.getName();
+                    bodyParameter.name(name);
+                    list = Arrays.asList(bodyParameter);
                 }
-            }
-        } else if (parameters.length == 0) {
-        } else {
-            BodyParameter bodyParameter = new BodyParameter();
-
-            ModelImpl model = new ModelImpl();
-
-            java.lang.reflect.Parameter firstParameter = parameters[0];
-            if (firstParameter.isAnnotationPresent(ApiParam.class)) {
-                for (java.lang.reflect.Parameter parameter : parameters) {
-                    ApiParam ann = parameter.getAnnotation(ApiParam.class);
-                    if (ann == null) {
-                        throw new IllegalStateException();
-                    }
-
-                    Property property = ModelConverters.getInstance().readAsProperty(parameter.getParameterizedType());
-                    model.property(ann.name(), property);
-                }
-                bodyParameter.schema(model);
-                operation.parameter(bodyParameter);
-                bodyParameter.setRequired(true);
+                operation.setParameters(list);
             } else if (firstParameter.getType().equals(RakamHttpRequest.class)) {
                 ApiImplicitParams annotation1 = method.getAnnotation(ApiImplicitParams.class);
                 return null;
@@ -596,10 +636,10 @@ public class SwaggerReader {
 
         for (Annotation annotation : annotations) {
             if (annotation instanceof ApiParam) {
-                QueryParameter qp = new QueryParameter()
+                FormParameter qp = new FormParameter()
                         .name(((ApiParam) annotation).name());
                 qp.setDefaultValue(defaultValue);
-                Property schema = ModelConverters.getInstance().readAsProperty(type);
+                Property schema = modelConverters.readAsProperty(type);
                 if (schema != null) {
                     qp.setProperty(schema);
                     if (schema instanceof ArrayProperty) {
@@ -641,7 +681,7 @@ public class SwaggerReader {
     boolean isPrimitive(Class<?> cls) {
         boolean out = false;
 
-        Property property = ModelConverters.getInstance().readAsProperty(cls);
+        Property property = modelConverters.readAsProperty(cls);
         if (property == null)
             out = false;
         else if ("integer".equals(property.getType()))
@@ -708,9 +748,9 @@ public class SwaggerReader {
                     } else
                         innerType = cls.getComponentType();
                     LOGGER.debug("inner type: " + innerType + " from " + cls);
-                    Property innerProperty = ModelConverters.getInstance().readAsProperty(innerType);
+                    Property innerProperty = modelConverters.readAsProperty(innerType);
                     if (innerProperty == null) {
-                        Map<String, Model> models = ModelConverters.getInstance().read(innerType);
+                        Map<String, Model> models = modelConverters.read(innerType);
                         if (models.size() > 0) {
                             for (String name : models.keySet()) {
                                 if (name.indexOf("java.util") == -1) {
@@ -721,7 +761,7 @@ public class SwaggerReader {
                                 }
                             }
                         }
-                        models = ModelConverters.getInstance().readAll(innerType);
+                        models = modelConverters.readAll(innerType);
                         if (swagger != null) {
                             for (String key : models.keySet()) {
                                 swagger.model(key, models.get(key));
@@ -733,7 +773,7 @@ public class SwaggerReader {
 
                         // creation of ref property doesn't add model to definitions - do it now instead
                         if (innerProperty instanceof RefProperty && swagger != null) {
-                            Map<String, Model> models = ModelConverters.getInstance().read(innerType);
+                            Map<String, Model> models = modelConverters.read(innerType);
                             String name = ((RefProperty) innerProperty).getSimpleRef();
                             swagger.addDefinition(name, models.get(name));
 
@@ -742,7 +782,7 @@ public class SwaggerReader {
                     }
 
                 } else {
-                    Map<String, Model> models = ModelConverters.getInstance().read(cls);
+                    Map<String, Model> models = modelConverters.read(cls);
                     if (models.size() > 0) {
                         for (String name : models.keySet()) {
                             if (name.indexOf("java.util") == -1) {
@@ -754,14 +794,14 @@ public class SwaggerReader {
                                     swagger.addDefinition(name, models.get(name));
                             }
                         }
-                        models = ModelConverters.getInstance().readAll(cls);
+                        models = modelConverters.readAll(cls);
                         if (swagger != null) {
                             for (String key : models.keySet()) {
                                 swagger.model(key, models.get(key));
                             }
                         }
                     } else {
-                        Property prop = ModelConverters.getInstance().readAsProperty(cls);
+                        Property prop = modelConverters.readAsProperty(cls);
                         if (prop != null) {
                             ModelImpl model = new ModelImpl();
                             model.setType(prop.getType());
