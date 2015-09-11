@@ -477,7 +477,7 @@ public class HttpServer {
         try {
             return mapper.writeValueAsString(apply);
         } catch (JsonProcessingException e) {
-            throw new RuntimeException("couldn't serialize object");
+            throw new RuntimeException("couldn't serialize object", e);
         }
     }
 

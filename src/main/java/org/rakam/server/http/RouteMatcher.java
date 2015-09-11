@@ -90,7 +90,7 @@ public class RouteMatcher {
 
     public void add(HttpMethod method, String path, HttpRequestHandler handler) {
         if(path.endsWith("*")) {
-            String substring = path.substring(0, path.length() - 1).replaceAll("^/+", "");
+            String substring = path.substring(0, path.length() - 1);
             routes.put(new PatternBinding(method, substring), handler);
             prefixRoutes.add(new AbstractMap.SimpleImmutableEntry<>(new PatternBinding(method, substring), handler));
         }else {
