@@ -1,29 +1,31 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.wordnik.swagger.converter.ModelConverters;
-import com.wordnik.swagger.jackson.ModelResolver;
-import com.wordnik.swagger.models.ArrayModel;
-import com.wordnik.swagger.models.Model;
-import com.wordnik.swagger.models.ModelImpl;
-import com.wordnik.swagger.models.Operation;
-import com.wordnik.swagger.models.Path;
-import com.wordnik.swagger.models.RefModel;
-import com.wordnik.swagger.models.Response;
-import com.wordnik.swagger.models.Scheme;
-import com.wordnik.swagger.models.SecurityDefinition;
-import com.wordnik.swagger.models.SecurityRequirement;
-import com.wordnik.swagger.models.SecurityScope;
-import com.wordnik.swagger.models.Swagger;
-import com.wordnik.swagger.models.Tag;
-import com.wordnik.swagger.models.parameters.BodyParameter;
-import com.wordnik.swagger.models.parameters.FormParameter;
-import com.wordnik.swagger.models.parameters.Parameter;
-import com.wordnik.swagger.models.parameters.SerializableParameter;
-import com.wordnik.swagger.models.properties.ArrayProperty;
-import com.wordnik.swagger.models.properties.MapProperty;
-import com.wordnik.swagger.models.properties.Property;
-import com.wordnik.swagger.models.properties.RefProperty;
+import io.swagger.converter.ModelConverters;
+import io.swagger.jackson.ModelResolver;
+import io.swagger.jackson.TypeNameResolver;
+import io.swagger.models.ArrayModel;
+import io.swagger.models.Model;
+import io.swagger.models.ModelImpl;
+import io.swagger.models.Operation;
+import io.swagger.models.Path;
+import io.swagger.models.RefModel;
+import io.swagger.models.Response;
+import io.swagger.models.Scheme;
+import io.swagger.models.SecurityRequirement;
+import io.swagger.models.Swagger;
+import io.swagger.models.Tag;
+import io.swagger.models.auth.ApiKeyAuthDefinition;
+import io.swagger.models.auth.SecuritySchemeDefinition;
+import io.swagger.models.parameters.BodyParameter;
+import io.swagger.models.parameters.FormParameter;
+import io.swagger.models.parameters.Parameter;
+import io.swagger.models.parameters.SerializableParameter;
+import io.swagger.models.properties.ArrayProperty;
+import io.swagger.models.properties.MapProperty;
+import io.swagger.models.properties.Property;
+import io.swagger.models.properties.RefProperty;
+import io.swagger.util.PrimitiveType;
 import org.rakam.server.http.annotations.Api;
 import org.rakam.server.http.annotations.ApiImplicitParams;
 import org.rakam.server.http.annotations.ApiOperation;
@@ -41,6 +43,7 @@ import javax.ws.rs.Consumes;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.Produces;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
@@ -65,10 +68,28 @@ public class SwaggerReader {
     private final Swagger swagger;
     private final ModelConverters modelConverters;
 
-    public SwaggerReader(Swagger swagger, ObjectMapper mapper) {
+    public SwaggerReader(Swagger swagger, ObjectMapper mapper, Map<Class, PrimitiveType> externalTypes) {
         this.swagger = swagger;
         modelConverters = new ModelConverters();
         modelConverters.addConverter(new ModelResolver(mapper));
+        if(externalTypes != null) {
+            addExternalTypes(externalTypes);
+        }
+
+    }
+
+    public SwaggerReader(Swagger swagger, ObjectMapper mapper) {
+        this(swagger, mapper, null);
+    }
+
+    private void addExternalTypes(Map<Class, PrimitiveType> externalTypes) {
+        try {
+            Field externalTypesField = PrimitiveType.class.getField("EXTERNAL_CLASSES");
+            externalTypesField.setAccessible(true);
+            Map<String, PrimitiveType> EXTERNAL_TYPES = (Map) externalTypesField.get(TypeNameResolver.std);
+            externalTypes.forEach((key, value) -> EXTERNAL_TYPES.put(key.getName(), value));
+        } catch (NoSuchFieldException|IllegalAccessException e) {
+        }
     }
 
     public Swagger read(Class cls) {
@@ -77,8 +98,6 @@ public class SwaggerReader {
 
     protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, Map<String, Tag> parentTags, List<Parameter> parentParameters) {
         Api api = cls.getAnnotation(Api.class);
-        Map<String, SecurityScope> globalScopes = new HashMap<>();
-
         javax.ws.rs.Path apiPath = cls.getAnnotation(javax.ws.rs.Path.class);
 
         // only read if allowing hidden apis OR api is not marked as hidden
@@ -371,10 +390,10 @@ public class SwaggerReader {
                         security.setName(auth.value());
                         AuthorizationScope[] scopes = auth.scopes();
                         for (AuthorizationScope scope : scopes) {
-                            SecurityDefinition definition = new SecurityDefinition(auth.type());
+                            SecuritySchemeDefinition definition = new ApiKeyAuthDefinition();
                             if (scope.scope() != null && !"".equals(scope.scope())) {
                                 security.addScope(scope.scope());
-                                definition.scope(scope.scope(), scope.description());
+//                                definition.scope(scope.scope(), scope.description());
                             }
                         }
                         securities.add(security);
@@ -534,7 +553,7 @@ public class SwaggerReader {
                         formParameter.setRequired(property.getRequired());
                         formParameter.setName(ann.name());
                         formParameter.setDescription(property.getDescription());
-                        formParameter.setDefaultValue(property.getDefault());
+                        formParameter.setDefaultValue(property.getExample());
 
                         formParameter.setType(property.getType());
                         formParameter.setFormat(property.getFormat());
