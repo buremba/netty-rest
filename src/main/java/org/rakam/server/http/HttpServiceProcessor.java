@@ -18,9 +18,6 @@ import java.util.Set;
 
 import static java.lang.String.format;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 31/03/15 06:26.
- */
 @SupportedAnnotationTypes(
         {"org.rakam.server.Service", "org.rakam.server.annotations.JsonRequest"}
 )

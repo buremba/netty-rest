@@ -7,9 +7,6 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 31/03/15 07:01.
- */
 public class Lambda {
     private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression %s";
     private static String REQUEST_HANDLER_PRIVATE_ERROR_MESSAGE = "Request handler method %s.%s is not accessible: %s";

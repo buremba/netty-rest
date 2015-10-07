@@ -15,9 +15,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 22/07/14 06:03.
- */
 public class RouteMatcher {
     HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
     private HttpRequestHandler noMatch = request -> request.response("404", HttpResponseStatus.NOT_FOUND).end();

@@ -27,9 +27,6 @@ import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import static io.netty.util.CharsetUtil.UTF_8;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 25/10/14 19:04.
- */
 public class RakamHttpRequest implements HttpRequest {
     private final ChannelHandlerContext ctx;
     private io.netty.handler.codec.http.HttpRequest request;

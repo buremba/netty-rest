@@ -1,8 +1,6 @@
 package org.rakam.server.http;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 25/10/14 12:38.
- */
+
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;

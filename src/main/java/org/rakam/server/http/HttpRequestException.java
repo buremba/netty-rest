@@ -1,8 +1,5 @@
 package org.rakam.server.http;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 17/04/15 04:35.
- */
 public class HttpRequestException extends RuntimeException {
     private final int statusCode;
 

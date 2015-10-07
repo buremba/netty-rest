@@ -18,9 +18,6 @@ import java.util.Map;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.HOST;
 
-/**
- * Created by buremba <Burak Emre Kabakcı> on 16/03/15 17:08.
- */
 public abstract class WebSocketService implements HttpRequestHandler {
     private WebSocketServerHandshaker handshaker;
 
