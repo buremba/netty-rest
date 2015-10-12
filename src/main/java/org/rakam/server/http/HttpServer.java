@@ -35,7 +35,6 @@ import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
 
 import javax.ws.rs.Path;
-
 import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandles;
@@ -45,6 +44,7 @@ import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -126,6 +126,7 @@ public class HttpServer {
         ImmutableMap<Class, PrimitiveType> mappings = ImmutableMap.<Class, PrimitiveType>builder()
                 .put(LocalDate.class, PrimitiveType.DATE)
                 .put(Duration.class, PrimitiveType.STRING)
+                .put(Instant.class, PrimitiveType.DATE_TIME)
                 .build();
         SwaggerReader reader = new SwaggerReader(swagger, mapper, mappings);
         httpServicePlugins.forEach(service -> {

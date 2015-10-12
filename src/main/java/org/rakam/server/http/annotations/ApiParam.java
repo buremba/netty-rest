@@ -41,7 +41,7 @@ public @interface ApiParam {
   String allowableValues() default "";
 
   /** specifies if the parameter is required or not */
-  boolean required() default false;
+  boolean required() default true;
 
   /** 
    * specify an optional access value for filtering in a Filter 

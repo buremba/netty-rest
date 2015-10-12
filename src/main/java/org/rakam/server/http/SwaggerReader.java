@@ -1,6 +1,8 @@
 package org.rakam.server.http;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 import io.swagger.converter.ModelConverters;
 import io.swagger.jackson.ModelResolver;
 import io.swagger.models.ArrayModel;
@@ -16,16 +18,19 @@ import io.swagger.models.Swagger;
 import io.swagger.models.Tag;
 import io.swagger.models.auth.ApiKeyAuthDefinition;
 import io.swagger.models.auth.SecuritySchemeDefinition;
+import io.swagger.models.parameters.AbstractSerializableParameter;
 import io.swagger.models.parameters.BodyParameter;
 import io.swagger.models.parameters.FormParameter;
 import io.swagger.models.parameters.HeaderParameter;
 import io.swagger.models.parameters.Parameter;
 import io.swagger.models.parameters.PathParameter;
 import io.swagger.models.parameters.QueryParameter;
+import io.swagger.models.parameters.RefParameter;
 import io.swagger.models.parameters.SerializableParameter;
 import io.swagger.models.properties.ArrayProperty;
 import io.swagger.models.properties.MapProperty;
 import io.swagger.models.properties.Property;
+import io.swagger.models.properties.PropertyBuilder;
 import io.swagger.models.properties.RefProperty;
 import io.swagger.util.PrimitiveType;
 import org.rakam.server.http.annotations.Api;
@@ -46,6 +51,7 @@ import javax.ws.rs.Consumes;
 import javax.ws.rs.HttpMethod;
 import javax.ws.rs.Produces;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -63,6 +69,8 @@ import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
+import static java.lang.String.format;
+
 public class SwaggerReader {
     private final Logger LOGGER = LoggerFactory.getLogger(SwaggerReader.class);
 
@@ -73,8 +81,8 @@ public class SwaggerReader {
         this.swagger = swagger;
         modelConverters = new ModelConverters();
         modelConverters.addConverter(new ModelResolver(mapper));
-        if(externalTypes != null) {
-            addExternalTypes(externalTypes);
+        if (externalTypes != null) {
+            setExternalTypes(externalTypes);
         }
 
     }
@@ -83,7 +91,7 @@ public class SwaggerReader {
         this(swagger, mapper, null);
     }
 
-    private void addExternalTypes(Map<Class, PrimitiveType> externalTypes) {
+    private void setExternalTypes(Map<Class, PrimitiveType> externalTypes) {
         // ugly hack until swagger supports adding external classes as primitive types
         try {
             Field externalTypesField = PrimitiveType.class.getDeclaredField("EXTERNAL_CLASSES");
@@ -96,7 +104,7 @@ public class SwaggerReader {
             Map<String, PrimitiveType> externalTypesInternal = externalTypes.entrySet().stream()
                     .collect(Collectors.toMap(e -> e.getKey().getName(), e -> e.getValue()));
             externalTypesField.set(null, externalTypesInternal);
-        } catch (NoSuchFieldException|IllegalAccessException e) {
+        } catch (NoSuchFieldException | IllegalAccessException e) {
             LOGGER.warn("Couldn't set external types", e);
         }
     }
@@ -259,17 +267,43 @@ public class SwaggerReader {
     private void readImplicitParameters(Method method, Operation operation) {
         ApiImplicitParams implicitParams = method.getAnnotation(ApiImplicitParams.class);
         if (implicitParams != null && implicitParams.value().length > 0) {
-            for (ApiImplicitParam param : implicitParams.value()) {
-                Parameter p = readImplicitParam(param);
-                if (p != null) {
-                    operation.addParameter(p);
+            if (Arrays.stream(implicitParams.value())
+                    .anyMatch(param -> param.dataType().equals("object"))) {
+                BodyParameter bodyParameter = new BodyParameter();
+                ModelImpl model = new ModelImpl();
+                for (ApiImplicitParam param : implicitParams.value()) {
+                    Parameter p = readImplicitParam(param);
+                    if (!(p instanceof AbstractSerializableParameter)) {
+                        throw new IllegalStateException();
+                    }
+                    AbstractSerializableParameter serializableParameter = (AbstractSerializableParameter) p;
+                    Property items = PropertyBuilder.build(serializableParameter.getType(),
+                            serializableParameter.getFormat(), ImmutableMap.of());
+                    items.setRequired(param.required());
+                    items.setAccess(param.access());
+                    items.setDefault(param.defaultValue() == null ? null : param.defaultValue());
+                    model.addProperty(param.name(), items);
+                }
+                bodyParameter.setSchema(model);
+                String name = method.getDeclaringClass().getName() + "." + method.getName();
+                bodyParameter.name(name);
+                swagger.addParameter(name, bodyParameter);
+
+                RefParameter refParameter = new RefParameter(name);
+                operation.addParameter(refParameter);
+            } else {
+                for (ApiImplicitParam param : implicitParams.value()) {
+                    Parameter p = readImplicitParam(param);
+                    if (p != null) {
+                        operation.addParameter(p);
+                    }
                 }
             }
         }
     }
 
     protected Parameter readImplicitParam(ApiImplicitParam param) {
-        final Parameter p;
+        final AbstractSerializableParameter p;
         if (param.paramType().equalsIgnoreCase("path")) {
             p = new PathParameter();
         } else if (param.paramType().equalsIgnoreCase("query")) {
@@ -284,9 +318,12 @@ public class SwaggerReader {
             LOGGER.warn("Unknown implicit parameter type: [" + param.paramType() + "]");
             return null;
         }
-        final Type type = typeFromString(param.dataType());
         p.setName(param.name());
+        p.setType(param.dataType());
+        p.setDefaultValue(param.defaultValue());
+        p.setAccess(param.access());
 
+        final Type type = typeFromString(param.dataType());
         return ParameterProcessor.applyAnnotations(swagger, p, type == null ? String.class : type,
                 Arrays.<Annotation>asList(param));
     }
@@ -418,7 +455,6 @@ public class SwaggerReader {
         ApiOperation apiOperation = method.getAnnotation(ApiOperation.class);
         ApiResponses responseAnnotation = method.getAnnotation(ApiResponses.class);
 
-        String operationId = method.getName();
         String responseContainer = null;
 
         Class<?> responseClass = null;
@@ -427,8 +463,6 @@ public class SwaggerReader {
         if (apiOperation != null) {
             if (apiOperation.hidden())
                 return null;
-            if (!"".equals(apiOperation.nickname()))
-                operationId = method.getName();
 
             defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
 
@@ -519,8 +553,6 @@ public class SwaggerReader {
             }
         }
 
-        operation.operationId(operationId);
-
         Annotation annotation;
         annotation = method.getAnnotation(Consumes.class);
         if (annotation != null) {
@@ -564,28 +596,39 @@ public class SwaggerReader {
                 }
             }
         }
-        boolean isDeprecated = false;
-        annotation = method.getAnnotation(Deprecated.class);
-        if (annotation != null)
-            isDeprecated = true;
+        operation.deprecated(method.isAnnotationPresent(Deprecated.class));
 
         Class[] parameterTypes = method.getParameterTypes();
         Type[] genericParameterTypes = method.getGenericParameterTypes();
         Annotation[][] paramAnnotations = method.getParameterAnnotations();
-        java.lang.reflect.Parameter[] parameters = method.getParameters();
+        java.lang.reflect.Parameter[] parameters;
 
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             Class<?> type = method.getParameters()[0].getType();
-            Map<String, Model> read = modelConverters.read(type);
-            swagger.addDefinition(type.getName(), read.get(type.getSimpleName()));
-            BodyParameter bodyParameter = new BodyParameter();
-            RefModel refModel = new RefModel();
-            refModel.set$ref(type.getName());
-            bodyParameter.schema(refModel);
-            bodyParameter.name(type.getSimpleName());
-            operation.parameter(bodyParameter);
-        } else if (parameters.length == 0) {
+            List<Constructor<?>> constructors = Arrays.stream(type.getConstructors())
+                    .filter(c -> c.isAnnotationPresent(JsonCreator.class))
+                    .collect(Collectors.toList());
+
+            if (constructors.size() > 1) {
+                throw new IllegalArgumentException(format("%s has more then one constructor annotation with @ParamBody. There must be only one.",
+                        type.getSimpleName()));
+            }
+
+            if (constructors.isEmpty()) {
+                throw new IllegalArgumentException(format("%s doesn't have any constructor annotation with @ParamBody.",
+                        type.getSimpleName()));
+            }
+
+            parameters = constructors.get(0).getParameters();
+            if(parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
+                throw new IllegalArgumentException(format("%s constructor parameters don't have @ApiParam annotation.",
+                        type.getSimpleName()));
+            }
         } else {
+            parameters = method.getParameters();
+        }
+
+        if(parameters.length > 0) {
             java.lang.reflect.Parameter firstParameter = parameters[0];
             if (firstParameter.isAnnotationPresent(ApiParam.class)) {
 
@@ -598,7 +641,7 @@ public class SwaggerReader {
                         !((property instanceof ArrayProperty) && params.indexOf(((ArrayProperty) property).getItems().getType()) > -1));
 
                 List<Parameter> list;
-                if(!isSchema) {
+                if (!isSchema) {
                     list = Arrays.stream(parameters).map(parameter -> {
                         ApiParam ann = parameter.getAnnotation(ApiParam.class);
                         if (ann == null) {
@@ -627,7 +670,7 @@ public class SwaggerReader {
                         java.lang.reflect.Parameter parameter = parameters[i];
                         ApiParam ann = parameter.getAnnotation(ApiParam.class);
                         model.addProperty(ann.name(), property);
-                        if(property instanceof RefProperty) {
+                        if (property instanceof RefProperty) {
                             Map<String, Model> subProperty = modelConverters.read(parameter.getParameterizedType());
                             String simpleRef = ((RefProperty) property).getSimpleRef();
                             swagger.addDefinition(simpleRef, subProperty.get(simpleRef));
@@ -651,6 +694,7 @@ public class SwaggerReader {
 
                     BodyParameter bodyParameter = new BodyParameter();
                     bodyParameter.setSchema(model);
+                    bodyParameter.setRequired(true);
                     String name = method.getDeclaringClass().getSimpleName() + "_" + method.getName();
                     bodyParameter.name(name);
                     list = Arrays.asList(bodyParameter);
@@ -662,6 +706,7 @@ public class SwaggerReader {
                 throw new IllegalStateException();
             }
         }
+
         if (operation.getResponses() == null) {
             operation.defaultResponse(new Response().description("successful operation"));
         }

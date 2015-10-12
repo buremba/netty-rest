@@ -6,7 +6,7 @@
 
     <groupId>org.rakam</groupId>
     <artifactId>netty-rest</artifactId>
-    <version>0.1-SNAPSHOT</version>
+    <version>0.3-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <licenses>
