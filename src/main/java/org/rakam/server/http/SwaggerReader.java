@@ -3,6 +3,7 @@ package org.rakam.server.http;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import io.swagger.converter.ModelConverters;
 import io.swagger.jackson.ModelResolver;
 import io.swagger.models.ArrayModel;
@@ -16,8 +17,6 @@ import io.swagger.models.Scheme;
 import io.swagger.models.SecurityRequirement;
 import io.swagger.models.Swagger;
 import io.swagger.models.Tag;
-import io.swagger.models.auth.ApiKeyAuthDefinition;
-import io.swagger.models.auth.SecuritySchemeDefinition;
 import io.swagger.models.parameters.AbstractSerializableParameter;
 import io.swagger.models.parameters.BodyParameter;
 import io.swagger.models.parameters.FormParameter;
@@ -40,7 +39,6 @@ import org.rakam.server.http.annotations.ApiParam;
 import org.rakam.server.http.annotations.ApiResponse;
 import org.rakam.server.http.annotations.ApiResponses;
 import org.rakam.server.http.annotations.Authorization;
-import org.rakam.server.http.annotations.AuthorizationScope;
 import org.rakam.server.http.annotations.ParamBody;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
@@ -109,27 +107,17 @@ public class SwaggerReader {
     }
 
     public Swagger read(Class cls) {
-        return read(cls, "", false, new HashMap<>(), new ArrayList<>());
+        return read(cls, "", false, ImmutableSet.of(), new ArrayList<>());
     }
 
-    protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, Map<String, Tag> parentTags, List<Parameter> parentParameters) {
+    protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, Set<String> parentTags, List<Parameter> parentParameters) {
         Api api = cls.getAnnotation(Api.class);
         javax.ws.rs.Path apiPath = cls.getAnnotation(javax.ws.rs.Path.class);
 
         // only read if allowing hidden apis OR api is not marked as hidden
         if ((api != null && readHidden) || (api != null && !api.hidden())) {
             // the value will be used as a tag for 2.0 UNLESS a Tags annotation is present
-            Set<String> tagStrings = extractTags(api);
-            Map<String, Tag> tags = new HashMap<>();
-            for (String tagString : tagStrings) {
-                Tag tag = new Tag().name(tagString);
-                tags.put(tagString, tag);
-            }
-            if (parentTags != null)
-                tags.putAll(parentTags);
-            for (String tagName : tags.keySet()) {
-                swagger.tag(tags.get(tagName));
-            }
+            Set<String> tags = extractTags(api);
 
             Authorization[] authorizations = api.authorizations();
 
@@ -137,13 +125,8 @@ public class SwaggerReader {
             for (Authorization auth : authorizations) {
                 if (auth.value() != null && !"".equals(auth.value())) {
                     SecurityRequirement security = new SecurityRequirement();
+                    security.requirement(auth.value());
                     security.setName(auth.value());
-                    AuthorizationScope[] scopes = auth.scopes();
-                    for (AuthorizationScope scope : scopes) {
-                        if (scope.scope() != null && !"".equals(scope.scope())) {
-                            security.addScope(scope.scope());
-                        }
-                    }
                     securities.add(security);
                 }
             }
@@ -183,9 +166,11 @@ public class SwaggerReader {
                     String httpMethod = extractOperationMethod(apiOperation, method);
 
                     Operation operation = parseMethod(method);
+
                     if (operation == null) {
                         continue;
                     }
+
                     if (parentParameters != null) {
                         parentParameters.forEach(operation::parameter);
                     }
@@ -222,6 +207,9 @@ public class SwaggerReader {
                                 }
                             }
                         }
+
+                        tags.forEach(operation::tag);
+
                         if (operation != null) {
                             Consumes consumes = method.getAnnotation(Consumes.class);
                             if (consumes != null) {
@@ -237,9 +225,6 @@ public class SwaggerReader {
                                 operation.produces("application/json");
                             }
 
-                            if (operation.getTags() == null) {
-                                tags.keySet().forEach(operation::tag);
-                            }
                             securities.forEach(operation::security);
 
                             Path path = swagger.getPath(operationPath);
@@ -468,6 +453,13 @@ public class SwaggerReader {
             if (apiOperation.hidden())
                 return null;
 
+            String nickname = apiOperation.nickname();
+            if(nickname == null || nickname.isEmpty()) {
+                operation.operationId(method.getName());
+            }else {
+                operation.operationId(nickname);
+            }
+
             defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
 
             operation
@@ -483,15 +475,8 @@ public class SwaggerReader {
                 for (Authorization auth : apiOperation.authorizations()) {
                     if (auth.value() != null && !"".equals(auth.value())) {
                         SecurityRequirement security = new SecurityRequirement();
+                        security.requirement(auth.value());
                         security.setName(auth.value());
-                        AuthorizationScope[] scopes = auth.scopes();
-                        for (AuthorizationScope scope : scopes) {
-                            SecuritySchemeDefinition definition = new ApiKeyAuthDefinition();
-                            if (scope.scope() != null && !"".equals(scope.scope())) {
-                                security.addScope(scope.scope());
-//                                definition.scope(scope.scope(), scope.description());
-                            }
-                        }
                         securities.add(security);
                     }
                 }
@@ -500,9 +485,7 @@ public class SwaggerReader {
         }
 
         if (responseClass == null) {
-            // pick out response from method declaration
             LOGGER.debug("picking up response class from method " + method);
-            Type t = getActualReturnType(method);
             responseClass = getActualReturnClass(method);
             if (!responseClass.equals(java.lang.Void.class) && !"void".equals(responseClass.toString()) && responseClass.getAnnotation(Api.class) == null) {
                 LOGGER.debug("reading model " + responseClass);
@@ -527,33 +510,34 @@ public class SwaggerReader {
                             .headers(defaultResponseHeaders));
                 }
             } else if (!responseClass.equals(java.lang.Void.class) && !"void".equals(responseClass.toString())) {
-                Map<String, Model> models = modelConverters.read(responseClass);
-                if (models.size() == 0) {
-                    Property p = modelConverters.readAsProperty(responseClass);
-                    operation.response(200, new Response()
-                            .description("successful operation")
-                            .schema(p)
-                            .headers(defaultResponseHeaders));
-                }
-                for (String key : models.keySet()) {
+                String name = responseClass.getSimpleName();
+                Model model = modelConverters.read(responseClass).get(name);
+                if(model == null) {
+                        Property p = modelConverters.readAsProperty(responseClass);
+                        operation.response(200, new Response()
+                                .description("successful operation")
+                                .schema(p)
+                                .headers(defaultResponseHeaders));
+
+
+                }else {
+                    model.setReference(responseClass.getName());
+
                     Property responseProperty;
 
                     if ("list".equalsIgnoreCase(responseContainer))
-                        responseProperty = new ArrayProperty(new RefProperty().asDefault(key));
+                        responseProperty = new ArrayProperty(new RefProperty().asDefault(name));
                     else if ("map".equalsIgnoreCase(responseContainer))
-                        responseProperty = new MapProperty(new RefProperty().asDefault(key));
+                        responseProperty = new MapProperty(new RefProperty().asDefault(name));
                     else
-                        responseProperty = new RefProperty().asDefault(key);
+                        responseProperty = new RefProperty().asDefault(name);
                     operation.response(200, new Response()
                             .description("successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
-                    swagger.model(key, models.get(key));
+                    swagger.model(name, model);
                 }
-                models = modelConverters.readAll(responseClass);
-                for (String key : models.keySet()) {
-                    swagger.model(key, models.get(key));
-                }
+
             }
         }
 
@@ -604,33 +588,25 @@ public class SwaggerReader {
 
         java.lang.reflect.Parameter[] parameters;
 
-        String name;
+        String name, reference;
+        if (!apiOperation.request().equals(Void.class)) {
+            Class<?> type = apiOperation.request();
+
+            parameters = readApiBody(type);
+            name = type.getSimpleName();
+            reference = type.getName();
+        } else
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             Class<?> type = method.getParameters()[0].getType();
-            List<Constructor<?>> constructors = Arrays.stream(type.getConstructors())
-                    .filter(c -> c.isAnnotationPresent(JsonCreator.class))
-                    .collect(Collectors.toList());
 
-            if (constructors.size() > 1) {
-                throw new IllegalArgumentException(format("%s has more then one constructor annotation with @ParamBody. There must be only one.",
-                        type.getSimpleName()));
-            }
+            parameters = readApiBody(type);
+            name = type.getSimpleName();
+            reference = type.getName();
 
-            if (constructors.isEmpty()) {
-                throw new IllegalArgumentException(format("%s doesn't have any constructor annotation with @ParamBody.",
-                        type.getSimpleName()));
-            }
-
-            parameters = constructors.get(0).getParameters();
-            if(parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
-                throw new IllegalArgumentException(format("%s constructor parameters don't have @ApiParam annotation.",
-                        type.getSimpleName()));
-            }
-
-            name = type.getName();
         } else {
-            parameters = method.getParameters();
+            parameters =  method.getParameters();
             name = method.getDeclaringClass().getSimpleName() + "_" + method.getName();
+            reference = method.getDeclaringClass().getName() + "_" + method.getName();
         }
 
         if(parameters.length > 0) {
@@ -649,7 +625,7 @@ public class SwaggerReader {
                 if (!isSchema) {
                     list = readFormParameters(parameters);
                 } else {
-                    list = readMethodParameters(parameters, properties, name);
+                    list = readMethodParameters(parameters, properties, name, reference);
                 }
                 operation.setParameters(list);
             } else if (firstParameter.getType().equals(RakamHttpRequest.class)) {
@@ -665,7 +641,36 @@ public class SwaggerReader {
         return operation;
     }
 
-    List<Parameter> readMethodParameters(java.lang.reflect.Parameter[] parameters, List<Property> properties, String name) {
+    java.lang.reflect.Parameter[] readApiBody(Class<?> type) {
+        List<Constructor<?>> constructors = Arrays.stream(type.getConstructors())
+                .filter(c -> c.isAnnotationPresent(JsonCreator.class))
+                .collect(Collectors.toList());
+
+        if (constructors.size() > 1) {
+            throw new IllegalArgumentException(format("%s has more then one constructor annotation with @ParamBody. There must be only one.",
+                    type.getSimpleName()));
+        }
+
+        if (constructors.isEmpty()) {
+            throw new IllegalArgumentException(format("%s doesn't have any constructor annotation with @JsonCreator.",
+                    type.getSimpleName()));
+        }
+
+        java.lang.reflect.Parameter[] parameters = constructors.get(0).getParameters();
+        if(parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
+            throw new IllegalArgumentException(format("%s constructor parameters don't have @ApiParam annotation.",
+                    type.getSimpleName()));
+        }
+
+        Model model = swagger.getDefinitions().get(type.getSimpleName());
+        if(model != null && !model.getReference().equals(type.getName())) {
+            throw new IllegalStateException();
+        }
+
+        return parameters;
+    }
+
+    List<Parameter> readMethodParameters(java.lang.reflect.Parameter[] parameters, List<Property> properties, String name, String reference) {
         ModelImpl model = new ModelImpl();
         for (int i = 0; i < properties.size(); i++) {
             Property property = properties.get(i);
@@ -685,16 +690,19 @@ public class SwaggerReader {
                     Type type = ((ParameterizedType) parameter.getParameterizedType()).getActualTypeArguments()[0];
                     // it reads fields of classes but what we actually want to do is to make the class serializable with Jackson library.
                     // therefore, it's a better idea to use constructor that has @JsonCreator annotation.
-                    Map<String, Model> read = modelConverters.read(type);
+                    Map<String, Model> read = modelConverters.readAll(type);
                     model.addProperty(property.getName(), null);
 
                     String refName = ((RefProperty) items).getSimpleRef();
-                    swagger.addDefinition(refName, read.get(refName));
+                    for (Map.Entry<String, Model> entry : read.entrySet()) {
+                        swagger.addDefinition(entry.getKey(), entry.getValue());
+                    }
                 }
             }
         }
 
         model.setName(name);
+        model.setReference(reference);
 
         BodyParameter bodyParameter = new BodyParameter();
         bodyParameter.name(name);

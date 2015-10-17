@@ -23,8 +23,6 @@ public @interface ApiOperation {
 
     String httpMethod() default "";
 
-    int position() default 0;
-
     String nickname() default "";
 
     String produces() default "";
@@ -34,8 +32,7 @@ public @interface ApiOperation {
     String protocols() default "";
 
     Authorization[] authorizations() default {@Authorization(
-            value = "",
-            type = ""
+            value = ""
     )};
 
     boolean hidden() default false;
