@@ -7,11 +7,14 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.lang.reflect.Method;
 
+import static java.lang.invoke.MethodHandles.lookup;
+
 public class Lambda {
     private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression %s";
     private static String REQUEST_HANDLER_PRIVATE_ERROR_MESSAGE = "Request handler method %s.%s is not accessible: %s";
 
-    public static <T> T produceLambda(MethodHandles.Lookup lookup, final Method sourceMethod, final Method targetMethod) throws Throwable {
+    public static <T> T produceLambda(final Method sourceMethod, final Method targetMethod) throws Throwable {
+        MethodHandles.Lookup lookup = lookup();
         final MethodHandles.Lookup caller = lookup.in(sourceMethod.getDeclaringClass());
         final MethodHandle implementationMethod = caller.unreflect(sourceMethod);
 

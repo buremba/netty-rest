@@ -1,14 +1,16 @@
 package org.rakam.server.http;
 
-public class HttpRequestException extends RuntimeException {
-    private final int statusCode;
+import io.netty.handler.codec.http.HttpResponseStatus;
 
-    public HttpRequestException(String message, int statusCode) {
+public class HttpRequestException extends RuntimeException {
+    private final HttpResponseStatus statusCode;
+
+    public HttpRequestException(String message, HttpResponseStatus statusCode) {
         super(message);
         this.statusCode = statusCode;
     }
 
-    public int getStatusCode() {
+    public HttpResponseStatus getStatusCode() {
         return statusCode;
     }
 
