@@ -3,7 +3,6 @@ package org.rakam.server.http;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
@@ -20,7 +19,6 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -31,6 +29,8 @@ import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
+import org.rakam.server.http.IRequestParameter.BodyParameter;
+import org.rakam.server.http.IRequestParameter.HeaderParameter;
 import org.rakam.server.http.annotations.ApiParam;
 import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
@@ -44,7 +44,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
-import java.lang.reflect.Type;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -57,6 +56,7 @@ import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
@@ -66,32 +66,27 @@ import static java.util.Objects.requireNonNull;
 import static org.rakam.server.http.util.Lambda.produceLambda;
 
 public class HttpServer {
-    private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression: \n %s";
-    private static final ObjectMapper DEFAULT_MAPPER;
-    static final String bodyError;
+    private final static InternalLogger LOGGER = InternalLoggerFactory.getInstance(HttpServer.class);
 
-    static {
-        DEFAULT_MAPPER = new ObjectMapper();
-        try {
-            bodyError =  DEFAULT_MAPPER.writeValueAsString(errorMessage("Body must be an json object.", BAD_REQUEST));
-        } catch (JsonProcessingException e) {
-            throw Throwables.propagate(e);
-        }
-    }
+    private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression: \n %s";
+    static final ObjectMapper DEFAULT_MAPPER;
 
     public final RouteMatcher routeMatcher;
-    private final static InternalLogger LOGGER = InternalLoggerFactory.getInstance(HttpServer.class);
     private final Swagger swagger;
 
     private final ObjectMapper mapper;
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
+    private final PreProcessors preProcessors;
     private Channel channel;
 
+    static {
+        DEFAULT_MAPPER = new ObjectMapper();
+    }
 
-    public HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, ObjectMapper mapper) {
+    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper) {
         this.routeMatcher = new RouteMatcher();
-
+        this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
         this.mapper = mapper;
@@ -99,26 +94,24 @@ public class HttpServer {
         this.bossGroup = new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"));
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
-        routeMatcher.add(HttpMethod.GET, "/api/swagger.json", request -> {
-            String content;
-
-            try {
-                content = Json.mapper().writeValueAsString(swagger);
-            } catch (JsonProcessingException e) {
-                request.response("Error").end();
-                return;
-            }
-
-            request.response(content).end();
-        });
-    }
-
-    public HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger) {
-        this(httpServicePlugins, websocketServices, swagger, new NioEventLoopGroup(), DEFAULT_MAPPER);
+        routeMatcher.add(HttpMethod.GET, "/api/swagger.json", this::swaggerApiHandle);
     }
 
     public void setNotFoundHandler(HttpRequestHandler handler) {
         routeMatcher.noMatch(handler);
+    }
+
+    private void swaggerApiHandle(RakamHttpRequest request) {
+        String content;
+
+        try {
+            content = Json.mapper().writeValueAsString(swagger);
+        } catch (JsonProcessingException e) {
+            request.response("Error").end();
+            return;
+        }
+
+        request.response(content).end();
     }
 
     private void registerWebSocketPaths(Set<WebSocketService> webSocketServices) {
@@ -182,8 +175,6 @@ public class HttpServer {
                                     handler = generateRequestHandler(service, method);
                                 }
                             } catch (Throwable e) {
-//                                throw new RuntimeException(format(REQUEST_HANDLER_ERROR_MESSAGE,
-//                                        method.getClass().getName(), method.getName(), e));
                                 throw new RuntimeException(e.getMessage());
                             }
 
@@ -191,7 +182,6 @@ public class HttpServer {
                         }
                     }
                     if (!mapped && jsonRequest != null) {
-//                        throw new IllegalStateException(format("Methods that have @JsonRequest annotation must also include one of HTTPStatus annotations. %s", method.toString()));
                         try {
                             if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
                                 microRouteMatcher.add(lastPath, HttpMethod.POST, createPostRequestHandler(service, method));
@@ -208,114 +198,39 @@ public class HttpServer {
         });
     }
 
-    public interface IRequestParameter {
-         <T> T extract(ObjectNode node, HttpHeaders headers);
-         boolean required();
-         String name();
-         String in();
-    }
-
-    private class HeaderParameter implements IRequestParameter {
-        public final String name;
-        public final boolean required;
-
-        public HeaderParameter(String name, boolean required) {
-            this.name = name;
-            this.required = required;
-        }
-
-        @Override
-        public <T> T extract(ObjectNode node, HttpHeaders headers) {
-            return (T) headers.get(name);
-        }
-
-        @Override
-        public boolean required() {
-            return required;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public String in() {
-            return "header";
-        }
-    }
-
-    private class BodyParameter implements IRequestParameter {
-        public final String name;
-        public final Type type;
-        public final boolean required;
-
-        private BodyParameter(String name, Type type, boolean required) {
-            this.name = name;
-            this.type = type;
-            this.required = required;
-        }
-
-        public <T> T extract(ObjectNode node, HttpHeaders headers) {
-            JsonNode value = node.get(name);
-            if(value == null) {
-                return null;
-            }
-            return mapper.convertValue(value, mapper.constructType(type));
-        }
-
-        @Override
-        public boolean required() {
-            return required;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public String in() {
-            return "body";
-        }
-    }
-
     private HttpRequestHandler createParametrizedPostRequestHandler(HttpService service, Method method)
             throws JsonProcessingException {
         ArrayList<IRequestParameter> bodyParams = new ArrayList<>();
         for (Parameter parameter : method.getParameters()) {
             if (parameter.isAnnotationPresent(ApiParam.class)) {
                 ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
-                bodyParams.add(new BodyParameter(apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
+                bodyParams.add(new BodyParameter(mapper, apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
             }
             else if(parameter.isAnnotationPresent(HeaderParam.class)) {
                 HeaderParam headerParam = parameter.getAnnotation(HeaderParam.class);
                 bodyParams.add(new HeaderParameter(headerParam.value(), headerParam.required()));
             }
             else {
-                bodyParams.add(new BodyParameter(parameter.getName(), parameter.getParameterizedType(), false));
+                bodyParams.add(new BodyParameter(mapper, parameter.getName(), parameter.getParameterizedType(), false));
             }
         }
 
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
 
         if (bodyParams.size() == 0) {
-            return new HttpRequestHandler() {
-                @Override
-                public void handle(RakamHttpRequest request) {
-                    Object invoke;
-                    try {
-                        invoke = method.invoke(service);
-                    } catch (IllegalAccessException e) {
-                        request.response("not ok").end();
-                        return;
-                    } catch (InvocationTargetException e) {
-                        requestError(e.getCause(), request);
-                        return;
-                    }
-
-                    handleRequest(mapper, isAsync, service, invoke, request);
+            return request -> {
+                Object invoke;
+                try {
+                    invoke = method.invoke(service);
+                } catch (IllegalAccessException e) {
+                    request.response("not ok").end();
+                    return;
+                } catch (InvocationTargetException e) {
+                    requestError(e.getCause(), request);
+                    return;
                 }
+
+                handleRequest(mapper, isAsync, service, invoke, request);
             };
         }
         MethodHandle methodHandle;
@@ -326,28 +241,22 @@ public class HttpServer {
             throw Throwables.propagate(e);
         }
 
-        return new JsonRequestRequestHandler(mapper, bodyParams, methodHandle, service, isAsync);
+        final List<RequestPreprocessor<ObjectNode>> jsonPreprocessors = preProcessors.jsonRequestPreprocessors.stream()
+                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
+        final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors = preProcessors.requestPreprocessors.stream()
+                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
+        return new JsonRequestRequestHandler(mapper, bodyParams, methodHandle, service, jsonPreprocessors, requestPreprocessors, isAsync);
     }
 
     static void handleRequest(ObjectMapper mapper, boolean isAsync, HttpService service, Object invoke, RakamHttpRequest request) {
         if (isAsync) {
-            handleAsyncJsonRequest(mapper, service, request, (CompletionStage) invoke);
+            handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke);
         } else {
             try {
                 request.response(mapper.writeValueAsString(invoke)).end();
             } catch (JsonProcessingException e) {
                 returnError(request, "error while serializing response: " + e.getMessage(), INTERNAL_SERVER_ERROR);
             }
-        }
-    }
-
-    static void requestError(Throwable ex, RakamHttpRequest request) {
-        if (ex instanceof HttpRequestException) {
-            HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-            returnError(request, ex.getMessage(), statusCode);
-        } else {
-            LOGGER.error("An uncaught exception raised while processing request.", ex);
-            returnError(request, "error processing request: " + ex.getMessage(), INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -393,41 +302,33 @@ public class HttpServer {
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
         Class<?> jsonClazz = method.getParameterTypes()[0];
 
-        return new HttpRequestHandler() {
-            @Override
-            public void handle(RakamHttpRequest request) {
-                request.bodyHandler(new Consumer<String>() {
-                    @Override
-                    public void accept(String o) {
-                        Object json;
-                        try {
-                            json = mapper.readValue(o, jsonClazz);
-                        } catch (UnrecognizedPropertyException e) {
-                            returnError(request, "Unrecognized field: " + e.getPropertyName(), BAD_REQUEST);
-                            return;
-                        } catch (InvalidFormatException e) {
-                            returnError(request, format("Field value couldn't validated: %s ", e.getOriginalMessage()), BAD_REQUEST);
-                            return;
-                        } catch (JsonMappingException e) {
-                            returnError(request, e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), BAD_REQUEST);
-                            return;
-                        } catch (JsonParseException e) {
-                            returnError(request, format("Couldn't parse json: %s ", e.getOriginalMessage()), BAD_REQUEST);
-                            return;
-                        } catch (IOException e) {
-                            returnError(request, format("Error while mapping json: ", e.getMessage()), BAD_REQUEST);
-                            return;
-                        }
-                        if (isAsync) {
-                            CompletionStage apply = (CompletionStage) function.apply(service, json);
-                            handleAsyncJsonRequest(mapper, service, request, apply);
-                        } else {
-                            handleJsonRequest(service, request, function, json);
-                        }
-                    }
-                });
+        return request -> request.bodyHandler(o -> {
+            Object json;
+            try {
+                json = mapper.readValue(o, jsonClazz);
+            } catch (UnrecognizedPropertyException e) {
+                returnError(request, "Unrecognized field: " + e.getPropertyName(), BAD_REQUEST);
+                return;
+            } catch (InvalidFormatException e) {
+                returnError(request, format("Field value couldn't validated: %s ", e.getOriginalMessage()), BAD_REQUEST);
+                return;
+            } catch (JsonMappingException e) {
+                returnError(request, e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), BAD_REQUEST);
+                return;
+            } catch (JsonParseException e) {
+                returnError(request, format("Couldn't parse json: %s ", e.getOriginalMessage()), BAD_REQUEST);
+                return;
+            } catch (IOException e) {
+                returnError(request, format("Error while mapping json: ", e.getMessage()), BAD_REQUEST);
+                return;
             }
-        };
+            if (isAsync) {
+                CompletionStage apply = (CompletionStage) function.apply(service, json);
+                handleAsyncJsonRequest(mapper, request, apply);
+            } else {
+                handleJsonRequest(service, request, function, json);
+            }
+        });
     }
 
     private HttpRequestHandler createGetRequestHandler(HttpService service, Method method)
@@ -439,7 +340,7 @@ public class HttpServer {
             return (request) -> {
                 if (isAsync) {
                     CompletionStage apply = (CompletionStage) function.apply(service);
-                    handleAsyncJsonRequest(mapper, service, request, apply);
+                    handleAsyncJsonRequest(mapper, request, apply);
                 } else {
                     handleJsonRequest(service, request, function);
                 }
@@ -451,7 +352,7 @@ public class HttpServer {
                     ObjectNode json = generate(request.params());
                     if (isAsync) {
                         CompletionStage apply = (CompletionStage) function.apply(service, json);
-                        handleAsyncJsonRequest(mapper, service, request, apply);
+                        handleAsyncJsonRequest(mapper, request, apply);
                     } else {
                         handleJsonRequest(service, request, function, json);
                     }
@@ -461,7 +362,7 @@ public class HttpServer {
                     ObjectNode json = generate(request.params());
                     if (isAsync) {
                         CompletionStage apply = (CompletionStage) function.apply(service, json);
-                        handleAsyncJsonRequest(mapper, service, request, apply);
+                        handleAsyncJsonRequest(mapper, request, apply);
                     } else {
                         handleJsonRequest(service, request, function, json);
                     }
@@ -510,7 +411,7 @@ public class HttpServer {
         }
     }
 
-    private static void handleAsyncJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, CompletionStage apply) {
+    private static void handleAsyncJsonRequest(ObjectMapper mapper,  RakamHttpRequest request, CompletionStage apply) {
         apply.whenComplete(new BiConsumer<Object, Throwable>() {
             @Override
             public void accept(Object result, Throwable ex) {
@@ -589,17 +490,14 @@ public class HttpServer {
                 .put("error_code", statusCode.code());
     }
 
-    public <T> void handleJsonPostRequest(RakamHttpRequest request, Consumer<T> consumer, Class<T> clazz) {
-        request.bodyHandler(jsonStr -> {
-            T data;
-            try {
-                data = mapper.readValue(jsonStr, clazz);
-            } catch (IOException e) {
-                returnError(request, "invalid request", BAD_REQUEST);
-                return;
-            }
-            consumer.accept(data);
-        });
+    static void requestError(Throwable ex, RakamHttpRequest request) {
+        if (ex instanceof HttpRequestException) {
+            HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
+            returnError(request, ex.getMessage(), statusCode);
+        } else {
+            LOGGER.error("An uncaught exception raised while processing request.", ex);
+            returnError(request, "error processing request: " + ex.getMessage(), INTERNAL_SERVER_ERROR);
+        }
     }
 
     public static ObjectNode generate(Map<String, List<String>> map) {

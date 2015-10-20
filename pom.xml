@@ -19,6 +19,8 @@
 
     <properties>
         <jackson.version>2.4.5</jackson.version>
+        <swagger.version>1.5.4</swagger.version>
+        <netty.version>4.0.28.Final</netty.version>
     </properties>
 
     <dependencies>
@@ -40,12 +42,12 @@
         <dependency>
             <groupId>io.netty</groupId>
             <artifactId>netty-all</artifactId>
-            <version>4.0.28.Final</version>
+            <version>${netty.version}</version>
         </dependency>
         <dependency>
             <groupId>io.swagger</groupId>
             <artifactId>swagger-core</artifactId>
-            <version>1.5.3</version>
+            <version>${swagger.version}</version>
             <exclusions>
                 <exclusion>
                     <groupId>com.fasterxml.jackson.datatype</groupId>

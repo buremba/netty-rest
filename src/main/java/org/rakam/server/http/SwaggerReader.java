@@ -83,7 +83,6 @@ public class SwaggerReader {
         if (externalTypes != null) {
             setExternalTypes(externalTypes);
         }
-
     }
 
     public SwaggerReader(Swagger swagger, ObjectMapper mapper) {
