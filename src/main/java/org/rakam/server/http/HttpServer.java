@@ -1,12 +1,7 @@
 package org.rakam.server.http;
 
-import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
@@ -35,10 +30,9 @@ import org.rakam.server.http.annotations.ApiParam;
 import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
+import org.rakam.server.http.util.Lambda;
 
 import javax.ws.rs.Path;
-import java.io.IOException;
-import java.lang.annotation.Annotation;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -48,6 +42,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,17 +54,17 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.netty.handler.codec.http.HttpMethod.POST;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
-import static org.rakam.server.http.util.Lambda.produceLambda;
+import static org.rakam.server.http.util.Lambda.produceLambdaForBiConsumer;
+import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer {
     private final static InternalLogger LOGGER = InternalLoggerFactory.getInstance(HttpServer.class);
-
-    private static String REQUEST_HANDLER_ERROR_MESSAGE = "Request handler method %s.%s couldn't converted to request handler lambda expression: \n %s";
     static final ObjectMapper DEFAULT_MAPPER;
 
     public final RouteMatcher routeMatcher;
@@ -79,6 +75,11 @@ public class HttpServer {
     private final EventLoopGroup workerGroup;
     private final PreProcessors preProcessors;
     private Channel channel;
+    private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
+            .put(LocalDate.class, PrimitiveType.DATE)
+            .put(Duration.class, PrimitiveType.STRING)
+            .put(Instant.class, PrimitiveType.DATE_TIME)
+            .build();
 
     static {
         DEFAULT_MAPPER = new ObjectMapper();
@@ -126,12 +127,8 @@ public class HttpServer {
     }
 
     private void registerEndPoints(Set<HttpService> httpServicePlugins) {
-        ImmutableMap<Class, PrimitiveType> mappings = ImmutableMap.<Class, PrimitiveType>builder()
-                .put(LocalDate.class, PrimitiveType.DATE)
-                .put(Duration.class, PrimitiveType.STRING)
-                .put(Instant.class, PrimitiveType.DATE_TIME)
-                .build();
-        SwaggerReader reader = new SwaggerReader(swagger, mapper, mappings);
+        SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerBeanMappings);
+
         httpServicePlugins.forEach(service -> {
 
             reader.read(service.getClass());
@@ -147,70 +144,62 @@ public class HttpServer {
             for (Method method : service.getClass().getMethods()) {
                 Path annotation = method.getAnnotation(Path.class);
 
-                if (annotation != null) {
-                    String lastPath = annotation.value();
-                    JsonRequest jsonRequest = method.getAnnotation(JsonRequest.class);
-                    boolean mapped = false;
-                    for (Annotation ann : method.getAnnotations()) {
-                        javax.ws.rs.HttpMethod methodAnnotation = ann.annotationType().getAnnotation(javax.ws.rs.HttpMethod.class);
+                if (annotation == null) {
+                    continue;
+                }
 
-                        if (methodAnnotation != null) {
-                            HttpRequestHandler handler = null;
-                            HttpMethod httpMethod = HttpMethod.valueOf(methodAnnotation.value());
-                            try {
-                                if (jsonRequest != null && httpMethod == HttpMethod.GET) {
-                                    throw new IllegalStateException("JsonRequest annotation can only be used with POST requests");
-                                } else if (jsonRequest != null && httpMethod == HttpMethod.POST) {
-                                    mapped = true;
+                String lastPath = annotation.value();
+                Iterator<HttpMethod> methodExists = Arrays.stream(method.getAnnotations())
+                        .filter(ann -> ann.annotationType().isAnnotationPresent(javax.ws.rs.HttpMethod.class))
+                        .map(ann -> HttpMethod.valueOf(ann.annotationType().getAnnotation(javax.ws.rs.HttpMethod.class).value()))
+                        .iterator();
 
-                                    if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
-                                        handler = createPostRequestHandler(service, method);
-                                    } else {
-                                        handler = createParametrizedPostRequestHandler(service, method);
-                                    }
-                                } else if (httpMethod == HttpMethod.GET && !method.getReturnType().equals(void.class)) {
-                                    mapped = true;
-                                    handler = createGetRequestHandler(service, method);
-                                } else {
-                                    handler = generateRequestHandler(service, method);
-                                }
-                            } catch (Throwable e) {
-                                throw new RuntimeException(e.getMessage());
-                            }
+                final JsonRequest jsonRequest = method.getAnnotation(JsonRequest.class);
 
-                            microRouteMatcher.add(lastPath.equals("/") ? "" : lastPath, httpMethod, handler);
+                // if no @Path annotation exists and @JsonRequest annotation is present, bind POST httpMethod by default.
+                if (!methodExists.hasNext() && jsonRequest != null) {
+                    microRouteMatcher.add(lastPath, POST, getJsonRequestHandler(method, service));
+                } else {
+                    while (methodExists.hasNext()) {
+                        HttpMethod httpMethod = methodExists.next();
+
+                        if (jsonRequest != null && httpMethod != POST) {
+                            throw new IllegalStateException("@JsonRequest annotation can only be used with POST requests");
                         }
-                    }
-                    if (!mapped && jsonRequest != null) {
-                        try {
-                            if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
-                                microRouteMatcher.add(lastPath, HttpMethod.POST, createPostRequestHandler(service, method));
-                            } else {
-                                microRouteMatcher.add(lastPath, HttpMethod.POST, createParametrizedPostRequestHandler(service, method));
-                            }
-                        } catch (Throwable e) {
-                            throw new RuntimeException(format(REQUEST_HANDLER_ERROR_MESSAGE,
-                                    method.getDeclaringClass().getName(), method.getName(), e));
+
+                        HttpRequestHandler handler;
+                        if (jsonRequest != null) {
+                            handler = getJsonRequestHandler(method, service);
+                        } else if (httpMethod == HttpMethod.GET && !method.getReturnType().equals(void.class)) {
+                            handler = createGetRequestHandler(service, method);
+                        } else {
+                            handler = generateRawRequestHandler(service, method);
                         }
+
+                        microRouteMatcher.add(lastPath.equals("/") ? "" : lastPath, httpMethod, handler);
                     }
                 }
             }
         });
     }
 
-    private HttpRequestHandler createParametrizedPostRequestHandler(HttpService service, Method method)
-            throws JsonProcessingException {
+    private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
+        if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
+            return new JsonBeanRequestHandler(mapper, method,
+                    getPreprocessorForJsonRequest(method),
+                    getPreprocessorRequest(method),
+                    service);
+        }
+
         ArrayList<IRequestParameter> bodyParams = new ArrayList<>();
         for (Parameter parameter : method.getParameters()) {
             if (parameter.isAnnotationPresent(ApiParam.class)) {
                 ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
                 bodyParams.add(new BodyParameter(mapper, apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
-            }
-            else if(parameter.isAnnotationPresent(HeaderParam.class)) {
+            } else if (parameter.isAnnotationPresent(HeaderParam.class)) {
                 HeaderParam headerParam = parameter.getAnnotation(HeaderParam.class);
                 bodyParams.add(new HeaderParameter(headerParam.value(), headerParam.required()));
-            }
-            else {
+            } else {
                 bodyParams.add(new BodyParameter(mapper, parameter.getName(), parameter.getParameterizedType(), false));
             }
         }
@@ -230,25 +219,35 @@ public class HttpServer {
                     return;
                 }
 
-                handleRequest(mapper, isAsync, service, invoke, request);
+                handleRequest(mapper, isAsync, invoke, request);
             };
-        }
-        MethodHandle methodHandle;
+        } else {
+            // TODO: we may specialize for a number of parameters to avoid generic MethodHandle invoker and use lambda generation instead.
+            MethodHandle methodHandle;
+            try {
+                methodHandle = lookup().unreflect(method);
+            } catch (IllegalAccessException e) {
+                throw Throwables.propagate(e);
+            }
 
-        try {
-            methodHandle = lookup().unreflect(method);
-        } catch (IllegalAccessException e) {
-            throw Throwables.propagate(e);
+            return new JsonParametrizedRequestHandler(mapper, bodyParams,
+                    methodHandle, service,
+                    getPreprocessorForJsonRequest(method),
+                    getPreprocessorRequest(method), isAsync);
         }
-
-        final List<RequestPreprocessor<ObjectNode>> jsonPreprocessors = preProcessors.jsonRequestPreprocessors.stream()
-                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
-        final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors = preProcessors.requestPreprocessors.stream()
-                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
-        return new JsonRequestRequestHandler(mapper, bodyParams, methodHandle, service, jsonPreprocessors, requestPreprocessors, isAsync);
     }
 
-    static void handleRequest(ObjectMapper mapper, boolean isAsync, HttpService service, Object invoke, RakamHttpRequest request) {
+    private List<RequestPreprocessor<ObjectNode>> getPreprocessorForJsonRequest(Method method) {
+        return preProcessors.jsonRequestPreprocessors.stream()
+                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
+    }
+
+    private List<RequestPreprocessor<RakamHttpRequest>> getPreprocessorRequest(Method method) {
+        return preProcessors.requestPreprocessors.stream()
+                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
+    }
+
+    static void handleRequest(ObjectMapper mapper, boolean isAsync, Object invoke, RakamHttpRequest request) {
         if (isAsync) {
             handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke);
         } else {
@@ -260,21 +259,18 @@ public class HttpServer {
         }
     }
 
-    private static BiFunction<HttpService, Object, Object> generateJsonRequestHandler(Method method) throws Throwable {
-        return produceLambda(method, BiFunction.class.getMethod("apply", Object.class, Object.class));
-    }
-
-    private static HttpRequestHandler generateRequestHandler(HttpService service, Method method)
-            throws Throwable {
+    private static HttpRequestHandler generateRawRequestHandler(HttpService service, Method method) {
         if (!method.getReturnType().equals(void.class) ||
                 method.getParameterCount() != 1 ||
                 !method.getParameterTypes()[0].equals(RakamHttpRequest.class)) {
             throw new IllegalStateException(format("The signature of HTTP request methods must be [void ()]", RakamHttpRequest.class.getCanonicalName()));
         }
 
+        // we don't need to pass service object is the method is static.
+        // it's also better for performance since there will be only one object to send the stack.
         if (Modifier.isStatic(method.getModifiers())) {
             Consumer<RakamHttpRequest> lambda;
-            lambda = produceLambda(method, Consumer.class.getMethod("accept", Object.class));
+            lambda = Lambda.produceLambdaForConsumer(method);
             return request -> {
                 try {
                     lambda.accept(request);
@@ -284,7 +280,7 @@ public class HttpServer {
             };
         } else {
             BiConsumer<HttpService, RakamHttpRequest> lambda;
-            lambda = produceLambda(method, BiConsumer.class.getMethod("accept", Object.class, Object.class));
+            lambda = Lambda.produceLambdaForBiConsumer(method);
             return request -> {
                 try {
                     lambda.accept(service, request);
@@ -295,83 +291,62 @@ public class HttpServer {
         }
     }
 
-    private HttpRequestHandler createPostRequestHandler(HttpService service, Method method)
-            throws Throwable {
-
-        BiFunction<HttpService, Object, Object> function = generateJsonRequestHandler(method);
+    private HttpRequestHandler createGetRequestHandler(HttpService service, Method method) {
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
-        Class<?> jsonClazz = method.getParameterTypes()[0];
 
-        return request -> request.bodyHandler(o -> {
-            Object json;
-            try {
-                json = mapper.readValue(o, jsonClazz);
-            } catch (UnrecognizedPropertyException e) {
-                returnError(request, "Unrecognized field: " + e.getPropertyName(), BAD_REQUEST);
-                return;
-            } catch (InvalidFormatException e) {
-                returnError(request, format("Field value couldn't validated: %s ", e.getOriginalMessage()), BAD_REQUEST);
-                return;
-            } catch (JsonMappingException e) {
-                returnError(request, e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), BAD_REQUEST);
-                return;
-            } catch (JsonParseException e) {
-                returnError(request, format("Couldn't parse json: %s ", e.getOriginalMessage()), BAD_REQUEST);
-                return;
-            } catch (IOException e) {
-                returnError(request, format("Error while mapping json: ", e.getMessage()), BAD_REQUEST);
-                return;
-            }
-            if (isAsync) {
-                CompletionStage apply = (CompletionStage) function.apply(service, json);
-                handleAsyncJsonRequest(mapper, request, apply);
-            } else {
-                handleJsonRequest(service, request, function, json);
-            }
-        });
-    }
-
-    private HttpRequestHandler createGetRequestHandler(HttpService service, Method method)
-            throws Throwable {
-        boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
+        final List<RequestPreprocessor<RakamHttpRequest>> preprocessors = getPreprocessorRequest(method);
 
         if (method.getParameterCount() == 0) {
-            Function<HttpService, Object> function = produceLambda(method, Function.class.getMethod("apply", Object.class));
+            Function<HttpService, Object> function = produceLambdaForFunction(method);
             return (request) -> {
+                if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                    return;
+                }
+
                 if (isAsync) {
                     CompletionStage apply = (CompletionStage) function.apply(service);
                     handleAsyncJsonRequest(mapper, request, apply);
                 } else {
-                    handleJsonRequest(service, request, function);
+                    handleJsonRequest(mapper, service, request, function);
                 }
             };
         } else {
-            BiFunction<HttpService, Object, Object> function = generateJsonRequestHandler(method);
+            BiFunction<HttpService, Object, Object> function = produceLambdaForBiConsumer(method);
+
             if (method.getParameterTypes()[0].equals(ObjectNode.class)) {
-                return (request) -> {
+                return request -> {
+                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                        return;
+                    }
+
                     ObjectNode json = generate(request.params());
+
                     if (isAsync) {
                         CompletionStage apply = (CompletionStage) function.apply(service, json);
                         handleAsyncJsonRequest(mapper, request, apply);
                     } else {
-                        handleJsonRequest(service, request, function, json);
+                        handleJsonRequest(mapper, service, request, function, json);
                     }
                 };
             } else {
-                return (request) -> {
+                return request -> {
+                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                        return;
+                    }
+
                     ObjectNode json = generate(request.params());
                     if (isAsync) {
                         CompletionStage apply = (CompletionStage) function.apply(service, json);
                         handleAsyncJsonRequest(mapper, request, apply);
                     } else {
-                        handleJsonRequest(service, request, function, json);
+                        handleJsonRequest(mapper, service, request, function, json);
                     }
                 };
             }
         }
     }
 
-    private void handleJsonRequest(HttpService serviceInstance, RakamHttpRequest request, BiFunction<HttpService, Object, Object> function, Object json) {
+    static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, BiFunction<HttpService, Object, Object> function, Object json) {
         try {
             Object apply = function.apply(serviceInstance, json);
             String response = encodeJson(mapper, apply);
@@ -387,7 +362,7 @@ public class HttpServer {
         }
     }
 
-    private void handleJsonRequest(HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function) {
+    static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function) {
         try {
             Object apply = function.apply(serviceInstance);
             String response = encodeJson(mapper, apply);
@@ -411,29 +386,26 @@ public class HttpServer {
         }
     }
 
-    private static void handleAsyncJsonRequest(ObjectMapper mapper,  RakamHttpRequest request, CompletionStage apply) {
-        apply.whenComplete(new BiConsumer<Object, Throwable>() {
-            @Override
-            public void accept(Object result, Throwable ex) {
-                if (ex != null) {
-                    if (ex instanceof HttpRequestException) {
-                        HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-                        String encode = encodeJson(mapper, errorMessage(ex.getMessage(), statusCode));
-                        request.response(encode, statusCode).end();
-                    } else {
-                        request.response(ex.getMessage()).end();
-                    }
+    static void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply) {
+        apply.whenComplete((BiConsumer<Object, Throwable>) (result, ex) -> {
+            if (ex != null) {
+                if (ex instanceof HttpRequestException) {
+                    HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
+                    String encode = encodeJson(mapper, errorMessage(ex.getMessage(), statusCode));
+                    request.response(encode, statusCode).end();
                 } else {
-                    if (result instanceof String) {
-                        request.response((String) result).end();
-                    } else {
-                        try {
-                            String encode = mapper.writeValueAsString(result);
-                            request.response(encode).end();
-                        } catch (JsonProcessingException e) {
-                            request.response(format("Couldn't serialize class %s : %s",
-                                    result.getClass().getCanonicalName(), e.getMessage())).end();
-                        }
+                    request.response(ex.getMessage()).end();
+                }
+            } else {
+                if (result instanceof String) {
+                    request.response((String) result).end();
+                } else {
+                    try {
+                        String encode = mapper.writeValueAsString(result);
+                        request.response(encode).end();
+                    } catch (JsonProcessingException e) {
+                        request.response(String.format("Couldn't serialize class %s : %s",
+                                result.getClass().getCanonicalName(), e.getMessage())).end();
                     }
                 }
             }
@@ -468,6 +440,16 @@ public class HttpServer {
         workerGroup.shutdownGracefully();
     }
 
+    static boolean applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor<RakamHttpRequest>> preprocessors) {
+        for (RequestPreprocessor<RakamHttpRequest> preprocessor : preprocessors) {
+            if(!preprocessor.handle(request.headers(), request)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public static void returnError(RakamHttpRequest request, String message, HttpResponseStatus statusCode) {
         ObjectNode obj = DEFAULT_MAPPER.createObjectNode()
                 .put("error", message)
@@ -500,14 +482,12 @@ public class HttpServer {
         }
     }
 
-    public static ObjectNode generate(Map<String, List<String>> map) {
-        ObjectNode obj = jsonNodeFactory.objectNode();
+    public ObjectNode generate(Map<String, List<String>> map) {
+        ObjectNode obj = mapper.createObjectNode();
         for (Map.Entry<String, List<String>> item : map.entrySet()) {
             String key = item.getKey();
             obj.put(key, item.getValue().get(0));
         }
         return obj;
     }
-
-    private static final JsonNodeFactory jsonNodeFactory = new JsonNodeFactory(false);
 }
