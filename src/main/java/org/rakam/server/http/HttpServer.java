@@ -186,7 +186,7 @@ public class HttpServer {
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             return new JsonBeanRequestHandler(mapper, method,
-                    getPreprocessorForJsonRequest(method),
+                    getPreprocessorForJsonBeanRequest(method),
                     getPreprocessorRequest(method),
                     service);
         }
@@ -239,6 +239,11 @@ public class HttpServer {
 
     private List<RequestPreprocessor<ObjectNode>> getPreprocessorForJsonRequest(Method method) {
         return preProcessors.jsonRequestPreprocessors.stream()
+                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
+    }
+
+    private List<RequestPreprocessor<Object>> getPreprocessorForJsonBeanRequest(Method method) {
+        return preProcessors.jsonBeanRequestPreprocessors.stream()
                 .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
     }
 

@@ -26,11 +26,11 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final boolean isAsync;
     private final BiFunction<HttpService, Object, Object> function;
     private final HttpService service;
-    private final List<RequestPreprocessor<ObjectNode>> jsonPreprocessors;
+    private final List<RequestPreprocessor<Object>> jsonPreprocessors;
     private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
 
     public JsonBeanRequestHandler(ObjectMapper mapper, Method method,
-                                  List<RequestPreprocessor<ObjectNode>> jsonPreprocessors,
+                                  List<RequestPreprocessor<Object>> jsonPreprocessors,
                                   List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
                                   HttpService service) {
         this.mapper = mapper;
@@ -68,7 +68,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
             }
 
             if(!jsonPreprocessors.isEmpty()) {
-                for (RequestPreprocessor<ObjectNode> preprocessor : jsonPreprocessors) {
+                for (RequestPreprocessor<Object> preprocessor : jsonPreprocessors) {
                     if(!preprocessor.handle(request.headers(), json)) {
                         return;
                     }

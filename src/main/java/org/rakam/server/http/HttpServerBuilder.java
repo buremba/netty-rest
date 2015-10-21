@@ -19,6 +19,7 @@ public class HttpServerBuilder {
     private ObjectMapper mapper;
     private Builder<PreprocessorEntry<ObjectNode>> jsonRequestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<RakamHttpRequest>> requestPreprocessors = ImmutableList.builder();
+    private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -33,6 +34,17 @@ public class HttpServerBuilder {
      */
     public HttpServerBuilder addJsonPreprocessor(RequestPreprocessor<ObjectNode> preprocessor, Predicate<Method> predicate) {
         jsonRequestPreprocessors.add(new PreprocessorEntry<>(preprocessor, predicate));
+        return this;
+    }
+
+    /**
+     * Add processor for @JsonRequest methods.
+     * @param preprocessor preprocessor instance that will processs request before the method.
+     * @param predicate applies preprocessor only methods that passes this predicate
+     * @return if true, method will not be called.
+     */
+    public HttpServerBuilder addJsonBeanPreprocessor(RequestPreprocessor<Object> preprocessor, Predicate<Method> predicate) {
+        jsonBeanRequestPreprocessors.add(new PreprocessorEntry<>(preprocessor, predicate));
         return this;
     }
 
@@ -65,7 +77,7 @@ public class HttpServerBuilder {
         return new HttpServer(
                 httpServices, websockerServices,
                 swagger, eventLoopGroup,
-                new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build()),
+                new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper);
     }
 }
