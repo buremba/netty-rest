@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.rakam.server.http.util.Lambda;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -15,10 +15,7 @@ import java.util.function.BiFunction;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static java.lang.String.format;
-import static org.rakam.server.http.HttpServer.handleAsyncJsonRequest;
-import static org.rakam.server.http.HttpServer.handleJsonRequest;
-import static org.rakam.server.http.HttpServer.returnError;
-import static org.rakam.server.http.util.Lambda.produceLambdaForBiConsumer;
+import static org.rakam.server.http.HttpServer.*;
 
 public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final ObjectMapper mapper;
@@ -36,7 +33,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
         this.mapper = mapper;
         this.service = service;
 
-        function = produceLambdaForBiConsumer(method);
+        function = Lambda.produceLambdaForBiFunction(method);
         isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
         jsonClazz = method.getParameterTypes()[0];
 
