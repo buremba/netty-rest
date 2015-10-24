@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.rakam.server.http.util.Lambda;
 
 import java.io.IOException;
@@ -64,15 +65,20 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 return;
             }
 
-            if(!jsonPreprocessors.isEmpty()) {
-                for (RequestPreprocessor<Object> preprocessor : jsonPreprocessors) {
-                    if(!preprocessor.handle(request.headers(), json)) {
-                        return;
+            try {
+                if(!jsonPreprocessors.isEmpty()) {
+                    for (RequestPreprocessor<Object> preprocessor : jsonPreprocessors) {
+                        if(!preprocessor.handle(request.headers(), json)) {
+                            return;
+                        }
                     }
                 }
-            }
 
-            if(!requestPreprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, requestPreprocessors)) {
+                if(!requestPreprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, requestPreprocessors)) {
+                    return;
+                }
+            } catch (Throwable e) {
+                requestError(e, request);
                 return;
             }
 

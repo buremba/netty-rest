@@ -43,6 +43,7 @@ public class RouteMatcher {
         if(request.getMethod() == HttpMethod.OPTIONS) {
             DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
             request.response(response).end();
+            return;
         }
 
         final HttpRequestHandler handler = routes.get(new PatternBinding(request.getMethod(), path));

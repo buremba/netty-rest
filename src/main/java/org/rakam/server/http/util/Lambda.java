@@ -37,15 +37,15 @@ public class Lambda {
         return produceLambda(sourceMethod, consumerAccept);
     }
 
-    public static BiFunction<HttpService, Object, Object> produceLambdaForBiFunction(Method method) {
+    public static BiFunction produceLambdaForBiFunction(Method method) {
         return produceLambda(method, biFunctionApply);
     }
 
-    public static <T> T produceLambdaForBiConsumer(final Method sourceMethod) {
+    public static BiConsumer produceLambdaForBiConsumer(final Method sourceMethod) {
         return produceLambda(sourceMethod, biConsumerAccept);
     }
 
-    public static <T> T produceLambdaForFunction(final Method sourceMethod) {
+    public static Function produceLambdaForFunction(final Method sourceMethod) {
         return produceLambda(sourceMethod, functionApply);
     }
 

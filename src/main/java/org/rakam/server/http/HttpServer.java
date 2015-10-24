@@ -6,6 +6,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
@@ -14,9 +16,13 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.HttpVersion;
+import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.internal.logging.InternalLogger;
@@ -27,6 +33,7 @@ import io.swagger.util.PrimitiveType;
 import org.rakam.server.http.IRequestParameter.BodyParameter;
 import org.rakam.server.http.IRequestParameter.HeaderParameter;
 import org.rakam.server.http.annotations.ApiParam;
+import org.rakam.server.http.annotations.CookieParam;
 import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
@@ -34,7 +41,6 @@ import org.rakam.server.http.util.Lambda;
 
 import javax.ws.rs.Path;
 import java.lang.invoke.MethodHandle;
-import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -55,12 +61,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static io.netty.handler.codec.http.HttpMethod.POST;
-import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
-import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
-import static org.rakam.server.http.util.Lambda.produceLambdaForBiConsumer;
 import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer {
@@ -148,6 +152,7 @@ public class HttpServer {
                     continue;
                 }
 
+                method.setAccessible(true);
                 String lastPath = annotation.value();
                 Iterator<HttpMethod> methodExists = Arrays.stream(method.getAnnotations())
                         .filter(ann -> ann.annotationType().isAnnotationPresent(javax.ws.rs.HttpMethod.class))
@@ -164,7 +169,12 @@ public class HttpServer {
                         HttpMethod httpMethod = methodExists.next();
 
                         if (jsonRequest != null && httpMethod != POST) {
-                            throw new IllegalStateException("@JsonRequest annotation can only be used with POST requests");
+                            if(Arrays.stream(method.getParameters()).anyMatch(p -> p.isAnnotationPresent(ApiParam.class))) {
+                                throw new IllegalStateException("@ApiParam annotation can only be used within POST requests");
+                            }
+                            if(method.getParameterCount() == 1 && method.getParameters()[0].isAnnotationPresent(ParamBody.class)) {
+                                throw new IllegalStateException("@ParamBody annotation can only be used within POST requests");
+                            }
                         }
 
                         HttpRequestHandler handler;
@@ -184,10 +194,12 @@ public class HttpServer {
     }
 
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
+        final List<RequestPreprocessor<RakamHttpRequest>> preprocessorRequest = getPreprocessorRequest(method);
+
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             return new JsonBeanRequestHandler(mapper, method,
                     getPreprocessorForJsonBeanRequest(method),
-                    getPreprocessorRequest(method),
+                    preprocessorRequest,
                     service);
         }
 
@@ -197,8 +209,11 @@ public class HttpServer {
                 ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
                 bodyParams.add(new BodyParameter(mapper, apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
             } else if (parameter.isAnnotationPresent(HeaderParam.class)) {
-                HeaderParam headerParam = parameter.getAnnotation(HeaderParam.class);
-                bodyParams.add(new HeaderParameter(headerParam.value(), headerParam.required()));
+                HeaderParam param = parameter.getAnnotation(HeaderParam.class);
+                bodyParams.add(new HeaderParameter(param.value(), param.required()));
+            }else if (parameter.isAnnotationPresent(CookieParam.class)) {
+                CookieParam param = parameter.getAnnotation(CookieParam.class);
+                bodyParams.add(new IRequestParameter.CookieParameter(param.name(), param.required()));
             } else {
                 bodyParams.add(new BodyParameter(mapper, parameter.getName(), parameter.getParameterizedType(), false));
             }
@@ -206,15 +221,28 @@ public class HttpServer {
 
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
 
+        final List<RequestPreprocessor<ObjectNode>> preprocessorForJsonRequest = getPreprocessorForJsonRequest(method);
+
         if (bodyParams.size() == 0) {
+            final ObjectNode emptyNode = mapper.createObjectNode();
+            final Function<HttpService, Object> lambda = Lambda.produceLambdaForFunction(method);
             return request -> {
                 Object invoke;
                 try {
-                    invoke = method.invoke(service);
-                } catch (IllegalAccessException e) {
-                    request.response("not ok").end();
-                    return;
-                } catch (InvocationTargetException e) {
+                    if(!preprocessorForJsonRequest.isEmpty()) {
+                        for (RequestPreprocessor<ObjectNode> preprocessor : preprocessorForJsonRequest) {
+                            if(!preprocessor.handle(request.headers(), emptyNode)) {
+                                return;
+                            }
+                        }
+                    }
+
+                    if(!preprocessorRequest.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessorRequest)) {
+                        return;
+                    }
+
+                    invoke = lambda.apply(service);
+                } catch (Throwable e) {
                     requestError(e.getCause(), request);
                     return;
                 }
@@ -232,8 +260,8 @@ public class HttpServer {
 
             return new JsonParametrizedRequestHandler(mapper, bodyParams,
                     methodHandle, service,
-                    getPreprocessorForJsonRequest(method),
-                    getPreprocessorRequest(method), isAsync);
+                    preprocessorForJsonRequest,
+                    preprocessorRequest, isAsync);
         }
     }
 
@@ -256,20 +284,18 @@ public class HttpServer {
         if (isAsync) {
             handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke);
         } else {
-            try {
-                request.response(mapper.writeValueAsString(invoke)).end();
-            } catch (JsonProcessingException e) {
-                returnError(request, "error while serializing response: " + e.getMessage(), INTERNAL_SERVER_ERROR);
-            }
+            returnResponse(mapper, request, OK, invoke);
         }
     }
 
-    private static HttpRequestHandler generateRawRequestHandler(HttpService service, Method method) {
+    private HttpRequestHandler generateRawRequestHandler(HttpService service, Method method) {
         if (!method.getReturnType().equals(void.class) ||
                 method.getParameterCount() != 1 ||
                 !method.getParameterTypes()[0].equals(RakamHttpRequest.class)) {
             throw new IllegalStateException(format("The signature of HTTP request methods must be [void ()]", RakamHttpRequest.class.getCanonicalName()));
         }
+
+        List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors = getPreprocessorRequest(method);
 
         // we don't need to pass service object is the method is static.
         // it's also better for performance since there will be only one object to send the stack.
@@ -278,6 +304,11 @@ public class HttpServer {
             lambda = Lambda.produceLambdaForConsumer(method);
             return request -> {
                 try {
+                    if(!requestPreprocessors.isEmpty() &&
+                            !HttpServer.applyPreprocessors(request, requestPreprocessors)) {
+                        return;
+                    }
+
                     lambda.accept(request);
                 } catch (Exception e) {
                     requestError(e, request);
@@ -304,7 +335,12 @@ public class HttpServer {
         if (method.getParameterCount() == 0) {
             Function<HttpService, Object> function = produceLambdaForFunction(method);
             return (request) -> {
-                if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                try {
+                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                        return;
+                    }
+                } catch (Throwable e) {
+                    requestError(e, request);
                     return;
                 }
 
@@ -316,11 +352,16 @@ public class HttpServer {
                 }
             };
         } else {
-            BiFunction<HttpService, Object, Object> function = produceLambdaForBiConsumer(method);
+            BiFunction<HttpService, Object, Object> function = Lambda.produceLambdaForBiFunction(method);
 
             if (method.getParameterTypes()[0].equals(ObjectNode.class)) {
                 return request -> {
-                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                    try {
+                        if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                            return;
+                        }
+                    } catch (Throwable e) {
+                        requestError(e, request);
                         return;
                     }
 
@@ -335,7 +376,12 @@ public class HttpServer {
                 };
             } else {
                 return request -> {
-                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                    try {
+                        if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
+                            return;
+                        }
+                    } catch (Throwable e) {
+                        requestError(e, request);
                         return;
                     }
 
@@ -351,42 +397,53 @@ public class HttpServer {
         }
     }
 
+
     static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, BiFunction<HttpService, Object, Object> function, Object json) {
         try {
             Object apply = function.apply(serviceInstance, json);
-            String response = encodeJson(mapper, apply);
-            request.response(response).end();
+            returnResponse(mapper, request, OK, apply);
         } catch (HttpRequestException e) {
             HttpResponseStatus statusCode = e.getStatusCode();
-            String encode = encodeJson(mapper, errorMessage(e.getMessage(), statusCode));
-            request.response(encode, statusCode).end();
+            returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
             LOGGER.error("An uncaught exception raised while processing request.", e);
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
-            request.response(encodeJson(mapper, errorMessage), BAD_REQUEST).end();
+            returnResponse(mapper, request, BAD_REQUEST, errorMessage);
+
         }
     }
 
     static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function) {
         try {
             Object apply = function.apply(serviceInstance);
-            String response = encodeJson(mapper, apply);
-            request.response(response).end();
+            returnResponse(mapper, request, OK, apply);
         } catch (HttpRequestException e) {
             HttpResponseStatus statusCode = e.getStatusCode();
-            String encode = encodeJson(mapper, errorMessage(e.getMessage(), statusCode));
-            request.response(encode, statusCode).end();
+            returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
             LOGGER.error("An uncaught exception raised while processing request.", e);
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
-            request.response(encodeJson(mapper, errorMessage), BAD_REQUEST).end();
+            returnResponse(mapper, request, BAD_REQUEST, errorMessage);
         }
     }
 
-    private static String encodeJson(ObjectMapper mapper, Object apply) {
+    private static void returnResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply) {
         try {
-            return mapper.writeValueAsString(apply);
+            if(apply instanceof Response) {
+                final Response apply1 = (Response) apply;
+                final byte[] bytes = mapper.writeValueAsBytes(apply1.getData());
+                final ByteBuf byteBuf = Unpooled.wrappedBuffer(bytes);
+                final DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, byteBuf);
+                if (apply1.getCookies() != null) {
+                    response.headers().add(HttpHeaders.Names.SET_COOKIE,
+                            ServerCookieEncoder.STRICT.encode(apply1.getCookies()));
+                }
+                request.response(response).end();
+            } else {
+                request.response(mapper.writeValueAsString(apply), status).end();
+            }
         } catch (JsonProcessingException e) {
+            LOGGER.error("Couldn't serialize returned object", e);
             throw new RuntimeException("couldn't serialize object", e);
         }
     }
@@ -396,8 +453,7 @@ public class HttpServer {
             if (ex != null) {
                 if (ex instanceof HttpRequestException) {
                     HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-                    String encode = encodeJson(mapper, errorMessage(ex.getMessage(), statusCode));
-                    request.response(encode, statusCode).end();
+                    returnResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode));
                 } else {
                     request.response(ex.getMessage()).end();
                 }

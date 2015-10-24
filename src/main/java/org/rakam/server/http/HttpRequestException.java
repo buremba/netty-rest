@@ -7,6 +7,9 @@ public class HttpRequestException extends RuntimeException {
 
     public HttpRequestException(String message, HttpResponseStatus statusCode) {
         super(message);
+        if(statusCode.code() < 400) {
+            throw new IllegalArgumentException("Http response codes that indicates an error are between 400 and 600");
+        }
         this.statusCode = statusCode;
     }
 
