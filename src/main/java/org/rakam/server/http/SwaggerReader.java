@@ -668,7 +668,7 @@ public class SwaggerReader {
         return operation;
     }
 
-    java.lang.reflect.Parameter[] readApiBody(Class<?> type) {
+    private java.lang.reflect.Parameter[] readApiBody(Class<?> type) {
         List<Constructor<?>> constructors = Arrays.stream(type.getConstructors())
                 .filter(c -> c.isAnnotationPresent(JsonCreator.class))
                 .collect(Collectors.toList());
@@ -684,14 +684,17 @@ public class SwaggerReader {
         }
 
         java.lang.reflect.Parameter[] parameters = constructors.get(0).getParameters();
+        // TODO fixme all parameters must have @ApiParam
         if(parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
             throw new IllegalArgumentException(format("%s constructor parameters don't have @ApiParam annotation.",
                     type.getSimpleName()));
         }
 
         Model model = swagger.getDefinitions().get(type.getSimpleName());
-        if(model != null && !model.getReference().equals(type.getName())) {
-            throw new IllegalStateException();
+        if(model != null && !type.getName().equals(model.getReference())) {
+            // TODO: it throws an exception in some platforms. Debug when it's produced.
+            LOGGER.error(String.format("Error while reading field of bean %s. The bean doesn't have Swagger definition", type.getName()));
+            return new java.lang.reflect.Parameter[0];
         }
 
         return parameters;
