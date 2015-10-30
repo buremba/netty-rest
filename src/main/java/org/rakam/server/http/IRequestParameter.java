@@ -3,12 +3,13 @@ package org.rakam.server.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.cookie.Cookie;
 import io.netty.handler.codec.http.cookie.ServerCookieDecoder;
 
 import java.lang.reflect.Type;
 import java.util.Set;
+
+import static io.netty.handler.codec.http.HttpHeaders.Names.COOKIE;
 
 public interface IRequestParameter {
 
@@ -63,8 +64,11 @@ public interface IRequestParameter {
         public <T> T extract(ObjectNode node, RakamHttpRequest request) {
             // TODO: it's not acceptable to decode cookie for each parameter.
             // move the logic to RakamHttpRequest.
-            final Set<Cookie> cookies = ServerCookieDecoder.STRICT
-                    .decode(request.headers().get(HttpHeaders.Names.COOKIE));
+            final String header = request.headers().get(COOKIE);
+            if(header == null) {
+                return null;
+            }
+            final Set<Cookie> cookies = ServerCookieDecoder.STRICT.decode(header);
             for (Cookie cookie : cookies) {
                 if(name.equals(cookie.name())) {
                     // TODO fixme: the value of cookie parameter always must be String.
@@ -86,7 +90,7 @@ public interface IRequestParameter {
 
         @Override
         public String in() {
-            return "header";
+            return "cookie";
         }
     }
 
