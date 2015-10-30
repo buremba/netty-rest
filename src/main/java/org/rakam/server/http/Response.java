@@ -69,7 +69,7 @@ public class Response<T> {
         return new Response<>(elem, HttpResponseStatus.OK);
     }
 
-    public static Response value(String value, HttpResponseStatus status) {
+    public static Response value(Object value, HttpResponseStatus status) {
         return new Response(value, status);
     }
 }
