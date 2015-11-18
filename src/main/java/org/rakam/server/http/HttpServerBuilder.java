@@ -6,8 +6,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import io.netty.channel.EventLoopGroup;
 import io.swagger.models.Swagger;
+import io.swagger.util.PrimitiveType;
 
 import java.lang.reflect.Method;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 
@@ -17,6 +19,7 @@ public class HttpServerBuilder {
     private Swagger swagger;
     private EventLoopGroup eventLoopGroup;
     private ObjectMapper mapper;
+    private Map<Class, PrimitiveType> overridenMappings;
     private Builder<PreprocessorEntry<ObjectNode>> jsonRequestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<RakamHttpRequest>> requestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
@@ -73,11 +76,17 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setOverridenMappings(Map<Class, PrimitiveType> overridenMappings) {
+        this.overridenMappings = overridenMappings;
+        return this;
+    }
+
     public HttpServer build() {
         return new HttpServer(
                 httpServices, websockerServices,
                 swagger, eventLoopGroup,
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
-                mapper == null ? HttpServer.DEFAULT_MAPPER : mapper);
+                mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
+                overridenMappings);
     }
 }

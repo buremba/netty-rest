@@ -588,7 +588,7 @@ public class SwaggerReader {
         Type explicitType = null;
 
         String name, reference;
-        String methodIdentifier = method.getDeclaringClass().getName() + "_" + method.getName();
+        String methodIdentifier = method.getName();
         if (!apiOperation.request().equals(Void.class)) {
             Class<?> clazz = apiOperation.request();
             if(clazz.getSuperclass().equals(TypeToken.class)) {
@@ -603,11 +603,18 @@ public class SwaggerReader {
             }
         } else
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
-            Class<?> type = method.getParameters()[0].getType();
+            Class type = method.getParameters()[0].getType();
 
-            parameters = readApiBody(type);
-            name = type.getSimpleName();
-            reference = type.getName();
+            if (modelConverters.readAsProperty(method.getParameters()[0].getParameterizedType()) instanceof ArrayProperty) {
+                explicitType = type;
+                parameters = null;
+                name = null;
+                reference = null;
+            } else {
+                parameters = readApiBody(type);
+                name = type.getSimpleName();
+                reference = type.getName();
+            }
         } else {
             parameters =  method.getParameters();
             name = method.getDeclaringClass().getSimpleName() + "_" + method.getName();
@@ -636,7 +643,9 @@ public class SwaggerReader {
             } else if (firstParameter.getType().equals(RakamHttpRequest.class)) {
                 readImplicitParameters(method, operation);
             } else {
-                throw new IllegalStateException();
+                throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
+                                "or a single parameter that has @BodyParam annotation or a single parameter that is RakamHttpRequest class.",
+                        method.getDeclaringClass().getName()+"."+method.getName()));
             }
         } else
         if(explicitType != null) {

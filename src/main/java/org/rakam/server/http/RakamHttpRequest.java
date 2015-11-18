@@ -20,11 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW_HEADERS;
-import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW_ORIGIN;
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONNECTION;
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_LENGTH;
-import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpHeaders.Names.*;
 import static io.netty.util.CharsetUtil.UTF_8;
 
 public class RakamHttpRequest implements HttpRequest {
@@ -147,8 +143,13 @@ public class RakamHttpRequest implements HttpRequest {
         boolean keepAlive = HttpHeaders.isKeepAlive(request);
 
         response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
-        response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, "*");
-        response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept");
+        for (Map.Entry<String, String> entry : request.headers()) {
+            if (entry.getKey().equals("Origin")) {
+                response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, entry.getValue());
+                break;
+            }
+        }
+        response.headers().set(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
 
         if (keepAlive) {
             response.headers().set(CONTENT_LENGTH, response.content().readableBytes());

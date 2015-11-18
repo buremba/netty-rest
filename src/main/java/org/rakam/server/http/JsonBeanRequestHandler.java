@@ -1,15 +1,16 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.rakam.server.http.util.Lambda;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
@@ -20,7 +21,7 @@ import static org.rakam.server.http.HttpServer.*;
 
 public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final ObjectMapper mapper;
-    private final Class<?> jsonClazz;
+    private final JavaType jsonClazz;
     private final boolean isAsync;
     private final BiFunction<HttpService, Object, Object> function;
     private final HttpService service;
@@ -36,7 +37,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
 
         function = Lambda.produceLambdaForBiFunction(method);
         isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
-        jsonClazz = method.getParameterTypes()[0];
+        jsonClazz = mapper.constructType(method.getParameters()[0].getParameterizedType());
 
         this.jsonPreprocessors = jsonPreprocessors;
         this.requestPreprocessors = requestPreprocessors;
@@ -55,10 +56,13 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 returnError(request, format("Field value couldn't validated: %s ", e.getOriginalMessage()), BAD_REQUEST);
                 return;
             } catch (JsonMappingException e) {
-                returnError(request, e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), BAD_REQUEST);
+                returnError(request, e.getCause() != null ? e.getCause().getClass().getName() + ": " +e.getCause().getMessage() : e.getMessage(), BAD_REQUEST);
                 return;
             } catch (JsonParseException e) {
                 returnError(request, format("Couldn't parse json: %s ", e.getOriginalMessage()), BAD_REQUEST);
+                return;
+            }catch (DateTimeParseException e) {
+                returnError(request, format("Couldn't parse date value '%s' in json: %s ", e.getParsedString(), e.getMessage()), BAD_REQUEST);
                 return;
             } catch (IOException e) {
                 returnError(request, format("Error while mapping json: ", e.getMessage()), BAD_REQUEST);
@@ -83,7 +87,13 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
             }
 
             if (isAsync) {
-                CompletionStage apply = (CompletionStage) function.apply(service, json);
+                CompletionStage apply;
+                try {
+                    apply = (CompletionStage) function.apply(service, json);
+                } catch (Exception e) {
+                    requestError(e, request);
+                    return;
+                }
                 handleAsyncJsonRequest(mapper, request, apply);
             } else {
                 handleJsonRequest(mapper, service, request, function, json);

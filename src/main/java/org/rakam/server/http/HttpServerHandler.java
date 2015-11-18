@@ -26,7 +26,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     }
         @Override
     public void channelReadComplete(ChannelHandlerContext ctx) {
-        body.delete(0, body.length());
+
     }
 
     @Override
@@ -43,12 +43,13 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
                 String s = chunk.content().toString(CharsetUtil.UTF_8);
-                if (body == null) {
+                if (body == null || body.length() == 0) {
                     request.handleBody(s);
                 } else {
                     body.append(s);
                     request.handleBody(body.toString());
                 }
+                body.delete(0, body.length());
                 chunk.release();
             } else {
                 // even if body content is empty, call request.handleBody method.

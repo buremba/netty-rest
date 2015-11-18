@@ -89,7 +89,7 @@ public class HttpServer {
         DEFAULT_MAPPER = new ObjectMapper();
     }
 
-    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper) {
+    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings) {
         this.routeMatcher = new RouteMatcher();
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
@@ -97,7 +97,7 @@ public class HttpServer {
         this.mapper = mapper;
 
         this.bossGroup = new NioEventLoopGroup(1);
-        registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"));
+        registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overridenMappings);
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
         routeMatcher.add(HttpMethod.GET, "/api/swagger.json", this::swaggerApiHandle);
     }
@@ -130,7 +130,13 @@ public class HttpServer {
         });
     }
 
-    private void registerEndPoints(Set<HttpService> httpServicePlugins) {
+    private void registerEndPoints(Set<HttpService> httpServicePlugins, Map<Class, PrimitiveType> overriddenMappings) {
+        Map<Class, PrimitiveType> swaggerBeanMappings;
+        if(overriddenMappings != null) {
+            swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder().putAll(this.swaggerBeanMappings).putAll(overriddenMappings).build();
+        } else {
+            swaggerBeanMappings = this.swaggerBeanMappings;
+        }
         SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerBeanMappings);
 
         httpServicePlugins.forEach(service -> {
@@ -345,7 +351,13 @@ public class HttpServer {
                 }
 
                 if (isAsync) {
-                    CompletionStage apply = (CompletionStage) function.apply(service);
+                    CompletionStage apply;
+                    try {
+                        apply = (CompletionStage) function.apply(service);
+                    } catch (Exception e) {
+                        requestError(e.getCause(), request);
+                        return;
+                    }
                     handleAsyncJsonRequest(mapper, request, apply);
                 } else {
                     handleJsonRequest(mapper, service, request, function);
@@ -368,7 +380,13 @@ public class HttpServer {
                     ObjectNode json = generate(request.params());
 
                     if (isAsync) {
-                        CompletionStage apply = (CompletionStage) function.apply(service, json);
+                        CompletionStage apply;
+                        try {
+                            apply = (CompletionStage) function.apply(service, json);
+                        } catch (Exception e) {
+                            requestError(e.getCause(), request);
+                            return;
+                        }
                         handleAsyncJsonRequest(mapper, request, apply);
                     } else {
                         handleJsonRequest(mapper, service, request, function, json);
@@ -387,7 +405,13 @@ public class HttpServer {
 
                     ObjectNode json = generate(request.params());
                     if (isAsync) {
-                        CompletionStage apply = (CompletionStage) function.apply(service, json);
+                        CompletionStage apply;
+                        try {
+                            apply = (CompletionStage) function.apply(service, json);
+                        } catch (Exception e) {
+                            requestError(e.getCause(), request);
+                            return;
+                        }
                         handleAsyncJsonRequest(mapper, request, apply);
                     } else {
                         handleJsonRequest(mapper, service, request, function, json);
@@ -409,7 +433,6 @@ public class HttpServer {
             LOGGER.error("An uncaught exception raised while processing request.", e);
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
             returnResponse(mapper, request, BAD_REQUEST, errorMessage);
-
         }
     }
 

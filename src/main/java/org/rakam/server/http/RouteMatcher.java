@@ -15,6 +15,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW_HEADERS;
+import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS;
+
 public class RouteMatcher {
     HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
     private HttpRequestHandler noMatch = request -> request.response("404", HttpResponseStatus.NOT_FOUND).end();
@@ -42,6 +45,10 @@ public class RouteMatcher {
         // TODO: Make it optional
         if(request.getMethod() == HttpMethod.OPTIONS) {
             DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+
+            response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, Upload-Time, Api-Version, Content-MD5, write_key, read_key, master_key");
+            response.headers().set(ACCESS_CONTROL_EXPOSE_HEADERS, "_auto_action");
+
             request.response(response).end();
             return;
         }
