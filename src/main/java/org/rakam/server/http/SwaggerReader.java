@@ -2,9 +2,9 @@ package org.rakam.server.http;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.reflect.TypeToken;
 import io.swagger.jackson.ModelResolver;
 import io.swagger.models.ArrayModel;
@@ -40,11 +40,14 @@ import org.rakam.server.http.annotations.ApiParam;
 import org.rakam.server.http.annotations.ApiResponse;
 import org.rakam.server.http.annotations.ApiResponses;
 import org.rakam.server.http.annotations.Authorization;
+import org.rakam.server.http.annotations.IgnoreApi;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
+import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.HttpMethod;
@@ -56,6 +59,7 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -108,12 +112,16 @@ public class SwaggerReader {
     }
 
     public Swagger read(Class cls) {
-        return read(cls, "", false, ImmutableSet.of(), new ArrayList<>());
+        return read(cls, "", false, new ArrayList<>());
     }
 
-    protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, Set<String> parentTags, List<Parameter> parentParameters) {
+    protected Swagger read(Class<?> cls, String parentPath, boolean readHidden, List<Parameter> parentParameters) {
         Api api = cls.getAnnotation(Api.class);
         javax.ws.rs.Path apiPath = cls.getAnnotation(javax.ws.rs.Path.class);
+
+        if(cls.isAnnotationPresent(IgnoreApi.class)) {
+            return swagger;
+        }
 
         // only read if allowing hidden apis OR api is not marked as hidden
         if ((api != null && readHidden) || (api != null && !api.hidden())) {
@@ -137,6 +145,10 @@ public class SwaggerReader {
             for (Method method : methods) {
                 ApiOperation apiOperation = method.getAnnotation(ApiOperation.class);
                 javax.ws.rs.Path methodPath = method.getAnnotation(javax.ws.rs.Path.class);
+
+                if(method.isAnnotationPresent(IgnoreApi.class)) {
+                    continue;
+                }
 
                 String operationPath = getPath(apiPath, methodPath, parentPath);
                 if (operationPath != null && apiOperation != null) {
@@ -166,7 +178,7 @@ public class SwaggerReader {
 
                     String httpMethod = extractOperationMethod(apiOperation, method);
 
-                    Operation operation = parseMethod(method);
+                    Operation operation = parseMethod(cls, method);
 
                     if (operation == null) {
                         continue;
@@ -194,7 +206,7 @@ public class SwaggerReader {
 
                     if (isSubResource(method)) {
                         Class<?> responseClass = method.getReturnType();
-                        read(responseClass, operationPath, true, tags, operation.getParameters());
+                        read(responseClass, operationPath, true, operation.getParameters());
                     }
 
                     // can't continue without a valid http method
@@ -215,6 +227,9 @@ public class SwaggerReader {
                             Consumes consumes = method.getAnnotation(Consumes.class);
                             if (consumes != null) {
                                 operation.consumes(Arrays.asList(consumes.value()));
+                            } else
+                            if(!apiOperation.consumes().isEmpty()) {
+                                operation.consumes(apiOperation.consumes());
                             } else {
                                 operation.consumes("application/json");
                             }
@@ -222,6 +237,9 @@ public class SwaggerReader {
                             Produces produces = method.getAnnotation(Produces.class);
                             if (produces != null) {
                                 operation.produces(Arrays.asList(produces.value()));
+                            } else
+                            if(!apiOperation.produces().isEmpty()) {
+                                operation.produces(apiOperation.produces());
                             } else {
                                 operation.produces("application/json");
                             }
@@ -334,7 +352,20 @@ public class SwaggerReader {
     private static Type getActualReturnType(Method method) {
         if (method.getReturnType().equals(CompletableFuture.class)) {
             Type responseClass = method.getGenericReturnType();
-            return ((ParameterizedType) responseClass).getActualTypeArguments()[0];
+
+            ParameterizedType type;
+            if(responseClass instanceof ParameterizedType) {
+                type = (ParameterizedType) responseClass;
+            } else {
+                try {
+                    // TODO: check super classes if this doesn't work.
+                    type = (ParameterizedType) method.getDeclaringClass().getSuperclass().getMethod(method.getName(), method.getParameterTypes())
+                            .getGenericReturnType();
+                } catch (NoSuchMethodException e) {
+                    throw Throwables.propagate(e);
+                }
+            }
+            return type.getActualTypeArguments()[0];
         }
 
         return method.getGenericReturnType();
@@ -439,7 +470,7 @@ public class SwaggerReader {
         return responseHeaders;
     }
 
-    public Operation parseMethod(Method method) {
+    public Operation parseMethod(Class readClass, Method method) {
         Operation operation = new Operation();
 
         ApiOperation apiOperation = method.getAnnotation(ApiOperation.class);
@@ -450,16 +481,15 @@ public class SwaggerReader {
         Type responseClass = null;
         Map<String, Property> defaultResponseHeaders = new HashMap<>();
 
+        Api parentApi = (Api) readClass.getAnnotation(Api.class);
+        String methodIdentifier = !apiOperation.nickname().isEmpty() ? apiOperation.nickname() :
+                parentApi.nickname()+""+method.getName().substring(0, 1).toUpperCase() + method.getName().substring(1);
+
         if (apiOperation != null) {
             if (apiOperation.hidden())
                 return null;
 
-            String nickname = apiOperation.nickname();
-            if(nickname == null || nickname.isEmpty()) {
-                operation.operationId(method.getName());
-            }else {
-                operation.operationId(nickname);
-            }
+            operation.operationId(methodIdentifier);
 
             defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
 
@@ -588,7 +618,6 @@ public class SwaggerReader {
         Type explicitType = null;
 
         String name, reference;
-        String methodIdentifier = method.getName();
         if (!apiOperation.request().equals(Void.class)) {
             Class<?> clazz = apiOperation.request();
             if(clazz.getSuperclass().equals(TypeToken.class)) {
@@ -617,7 +646,7 @@ public class SwaggerReader {
             }
         } else {
             parameters =  method.getParameters();
-            name = method.getDeclaringClass().getSimpleName() + "_" + method.getName();
+            name = methodIdentifier;
             reference = methodIdentifier;
         }
 
@@ -628,7 +657,7 @@ public class SwaggerReader {
                 List<String> params = Arrays.asList("string", "number", "integer", "boolean");
 
                 List<Property> properties = Arrays.stream(parameters).map(parameter ->
-                        modelConverters.readAsProperty(parameter.getParameterizedType())).collect(Collectors.toList());
+                        modelConverters.readAsProperty(getActualType(readClass, parameter.getParameterizedType()))).collect(Collectors.toList());
 
                 boolean isSchema = properties.stream().anyMatch(property -> params.indexOf(property.getType()) == -1 &&
                         !((property instanceof ArrayProperty) && params.indexOf(((ArrayProperty) property).getItems().getType()) > -1));
@@ -675,6 +704,21 @@ public class SwaggerReader {
             operation.defaultResponse(new Response().description("successful operation"));
         }
         return operation;
+    }
+
+    private static Type getActualType(Class readClass, Type parameterizedType) {
+        // if the parameter has a generic type, it will be read as Object
+        // so we need to find the actual implementation and return that type.
+        if(parameterizedType instanceof TypeVariableImpl) {
+            TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
+            Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();
+            for (int i = 0; i < genericParameters.length; i++) {
+                if(genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
+                    return implementations[i];
+                }
+            }
+        }
+        return parameterizedType;
     }
 
     private java.lang.reflect.Parameter[] readApiBody(Class<?> type) {
@@ -735,7 +779,6 @@ public class SwaggerReader {
                     Map<String, Model> read = modelConverters.readAll(type);
                     model.addProperty(property.getName(), null);
 
-                    String refName = ((RefProperty) items).getSimpleRef();
                     for (Map.Entry<String, Model> entry : read.entrySet()) {
                         swagger.addDefinition(entry.getKey(), entry.getValue());
                     }

@@ -72,14 +72,8 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
             try {
                 if(!jsonPreprocessors.isEmpty()) {
                     for (RequestPreprocessor<Object> preprocessor : jsonPreprocessors) {
-                        if(!preprocessor.handle(request.headers(), json)) {
-                            return;
-                        }
+                        preprocessor.handle(request.headers(), json);
                     }
-                }
-
-                if(!requestPreprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, requestPreprocessors)) {
-                    return;
                 }
             } catch (Throwable e) {
                 requestError(e, request);

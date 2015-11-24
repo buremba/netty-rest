@@ -19,10 +19,15 @@ import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW
 import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS;
 
 public class RouteMatcher {
-    HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
+    private final boolean debugMode;
+    private HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
     private HttpRequestHandler noMatch = request -> request.response("404", HttpResponseStatus.NOT_FOUND).end();
-    public final AttributeKey<String> PATH = AttributeKey.valueOf("/path");
+    static final AttributeKey<String> PATH = AttributeKey.valueOf("/path");
     private List<Map.Entry<PatternBinding, HttpRequestHandler>> prefixRoutes = new LinkedList<>();
+
+    public RouteMatcher(boolean debugMode) {
+        this.debugMode = debugMode;
+    }
 
     public void handle(ChannelHandlerContext ctx, WebSocketFrame frame) {
         String path = ctx.attr(PATH).get();
@@ -46,7 +51,7 @@ public class RouteMatcher {
         if(request.getMethod() == HttpMethod.OPTIONS) {
             DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
 
-            response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, Upload-Time, Api-Version, Content-MD5, write_key, read_key, master_key");
+            response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, api_key");
             response.headers().set(ACCESS_CONTROL_EXPOSE_HEADERS, "_auto_action");
 
             request.response(response).end();
@@ -67,6 +72,10 @@ public class RouteMatcher {
                 }
             }
             noMatch.handle(request);
+        }
+
+        if(debugMode) {
+
         }
     }
 

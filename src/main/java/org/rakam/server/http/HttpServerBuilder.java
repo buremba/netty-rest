@@ -19,6 +19,7 @@ public class HttpServerBuilder {
     private Swagger swagger;
     private EventLoopGroup eventLoopGroup;
     private ObjectMapper mapper;
+    private boolean debugMode;
     private Map<Class, PrimitiveType> overridenMappings;
     private Builder<PreprocessorEntry<ObjectNode>> jsonRequestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<RakamHttpRequest>> requestPreprocessors = ImmutableList.builder();
@@ -76,6 +77,11 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setDebugMode(boolean debugMode) {
+        this.debugMode = debugMode;
+        return this;
+    }
+
     public HttpServerBuilder setOverridenMappings(Map<Class, PrimitiveType> overridenMappings) {
         this.overridenMappings = overridenMappings;
         return this;
@@ -87,6 +93,6 @@ public class HttpServerBuilder {
                 swagger, eventLoopGroup,
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings);
+                overridenMappings, debugMode);
     }
 }

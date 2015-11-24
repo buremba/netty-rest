@@ -1,7 +1,6 @@
 package org.rakam.server.http;
 
 
-
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -16,7 +15,7 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 
 public class HttpServerHandler extends ChannelInboundHandlerAdapter {
-    private RakamHttpRequest request;
+    protected RakamHttpRequest request;
     private RouteMatcher routes;
     private StringBuilder body = new StringBuilder(2 << 15);
     private static String EMPTY_BODY = "";
@@ -24,16 +23,11 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     public HttpServerHandler(RouteMatcher routes) {
         this.routes = routes;
     }
-        @Override
-    public void channelReadComplete(ChannelHandlerContext ctx) {
-
-    }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
             this.request = new RakamHttpRequest(ctx, (io.netty.handler.codec.http.HttpRequest) msg);
-
             if (HttpHeaders.is100ContinueExpected(request)) {
                 ctx.write(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
             } else {

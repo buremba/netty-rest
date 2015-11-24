@@ -9,6 +9,7 @@ import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
@@ -25,6 +26,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.util.AttributeKey;
+import io.netty.util.internal.ConcurrentSet;
 import io.netty.util.internal.logging.InternalLogger;
 import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.swagger.models.Swagger;
@@ -38,12 +41,17 @@ import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
 import org.rakam.server.http.util.Lambda;
+import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
+import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.ws.rs.Path;
+import java.io.UnsupportedEncodingException;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -60,6 +68,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
 import static io.netty.handler.codec.http.HttpMethod.POST;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static java.lang.String.format;
@@ -78,6 +87,7 @@ public class HttpServer {
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
     private final PreProcessors preProcessors;
+    private final boolean debugMode;
     private Channel channel;
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
             .put(LocalDate.class, PrimitiveType.DATE)
@@ -89,12 +99,14 @@ public class HttpServer {
         DEFAULT_MAPPER = new ObjectMapper();
     }
 
-    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings) {
-        this.routeMatcher = new RouteMatcher();
+
+    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings, boolean debugMode) {
+        this.routeMatcher = new RouteMatcher(debugMode);
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
         this.mapper = mapper;
+        this.debugMode = debugMode;
 
         this.bossGroup = new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overridenMappings);
@@ -213,7 +225,8 @@ public class HttpServer {
         for (Parameter parameter : method.getParameters()) {
             if (parameter.isAnnotationPresent(ApiParam.class)) {
                 ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
-                bodyParams.add(new BodyParameter(mapper, apiParam.name(), parameter.getParameterizedType(), apiParam == null ? false : apiParam.required()));
+                bodyParams.add(new BodyParameter(mapper, apiParam.name(), getActualType(service.getClass(), parameter.getParameterizedType()),
+                        apiParam == null ? false : apiParam.required()));
             } else if (parameter.isAnnotationPresent(HeaderParam.class)) {
                 HeaderParam param = parameter.getAnnotation(HeaderParam.class);
                 bodyParams.add(new HeaderParameter(param.value(), param.required()));
@@ -237,14 +250,12 @@ public class HttpServer {
                 try {
                     if(!preprocessorForJsonRequest.isEmpty()) {
                         for (RequestPreprocessor<ObjectNode> preprocessor : preprocessorForJsonRequest) {
-                            if(!preprocessor.handle(request.headers(), emptyNode)) {
-                                return;
-                            }
+                            preprocessor.handle(request.headers(), emptyNode);
                         }
                     }
 
-                    if(!preprocessorRequest.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessorRequest)) {
-                        return;
+                    if(!preprocessorRequest.isEmpty()) {
+                        HttpServer.applyPreprocessors(request, preprocessorRequest);
                     }
 
                     invoke = lambda.apply(service);
@@ -269,6 +280,21 @@ public class HttpServer {
                     preprocessorForJsonRequest,
                     preprocessorRequest, isAsync);
         }
+    }
+
+    private Type getActualType(Class readClass, Type parameterizedType) {
+        // if the parameter has a generic type, it will be read as Object
+        // so we need to find the actual implementation and return that type.
+        if(parameterizedType instanceof TypeVariableImpl) {
+            TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
+            Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();
+            for (int i = 0; i < genericParameters.length; i++) {
+                if(genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
+                    return implementations[i];
+                }
+            }
+        }
+        return parameterizedType;
     }
 
     private List<RequestPreprocessor<ObjectNode>> getPreprocessorForJsonRequest(Method method) {
@@ -310,9 +336,8 @@ public class HttpServer {
             lambda = Lambda.produceLambdaForConsumer(method);
             return request -> {
                 try {
-                    if(!requestPreprocessors.isEmpty() &&
-                            !HttpServer.applyPreprocessors(request, requestPreprocessors)) {
-                        return;
+                    if(!requestPreprocessors.isEmpty()) {
+                        HttpServer.applyPreprocessors(request, requestPreprocessors);
                     }
 
                     lambda.accept(request);
@@ -342,8 +367,8 @@ public class HttpServer {
             Function<HttpService, Object> function = produceLambdaForFunction(method);
             return (request) -> {
                 try {
-                    if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
-                        return;
+                    if(!preprocessors.isEmpty()) {
+                        applyPreprocessors(request, preprocessors);
                     }
                 } catch (Throwable e) {
                     requestError(e, request);
@@ -369,8 +394,8 @@ public class HttpServer {
             if (method.getParameterTypes()[0].equals(ObjectNode.class)) {
                 return request -> {
                     try {
-                        if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
-                            return;
+                        if(!preprocessors.isEmpty()) {
+                            HttpServer.applyPreprocessors(request, preprocessors);
                         }
                     } catch (Throwable e) {
                         requestError(e, request);
@@ -395,8 +420,8 @@ public class HttpServer {
             } else {
                 return request -> {
                     try {
-                        if(!preprocessors.isEmpty() && !HttpServer.applyPreprocessors(request, preprocessors)) {
-                            return;
+                        if(!preprocessors.isEmpty()) {
+                            HttpServer.applyPreprocessors(request, preprocessors);
                         }
                     } catch (Throwable e) {
                         requestError(e, request);
@@ -500,6 +525,43 @@ public class HttpServer {
             throws InterruptedException {
         ServerBootstrap b = new ServerBootstrap();
         b.option(ChannelOption.SO_BACKLOG, 1024);
+
+        ConcurrentSet<ChannelHandlerContext> activeChannels = new ConcurrentSet();
+        AttributeKey<Integer> START_TIME = AttributeKey.valueOf("/start_time");
+
+        if(debugMode) {
+            routeMatcher.add(HttpMethod.GET, "/active-client/count",
+                    request -> request.response(Integer.toString(activeChannels.size())).end());
+
+            routeMatcher.add(HttpMethod.GET, "/active-client/list", request -> {
+                int now = (int) (System.currentTimeMillis()/1000);
+
+                String collect = activeChannels.stream().map(c -> {
+                    String s = c.channel().remoteAddress().toString();
+                    Integer integer = c.attr(START_TIME).get();
+                    if(integer != null) {
+                        s += " " + (now - integer) + "s ";
+                    } else {
+                        s += " ? ";
+                    }
+                    s += c.attr(RouteMatcher.PATH).get();
+                    if (request.context().channel().equals(c)) {
+                        s += " *";
+                    }
+                    return s;
+                }).collect(Collectors.joining("\n"));
+
+                try {
+                    DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
+                            HttpResponseStatus.OK, Unpooled.wrappedBuffer(collect.getBytes("UTF-8")));
+                    response.headers().set(CONTENT_TYPE, "text/plain");
+                    request.response(response).end();
+                } catch (UnsupportedEncodingException e) {
+                    throw Throwables.propagate(e);
+                }
+            });
+        }
+
         b.group(bossGroup, workerGroup)
                 .channel(NioServerSocketChannel.class)
                 .handler(new LoggingHandler(LogLevel.INFO))
@@ -509,11 +571,35 @@ public class HttpServer {
                             throws Exception {
                         ChannelPipeline p = ch.pipeline();
                         p.addLast("httpCodec", new HttpServerCodec());
-                        p.addLast("serverHandler", new HttpServerHandler(routeMatcher));
+                        if(debugMode) {
+                            p.addLast("serverHandler", new HttpServerHandler(routeMatcher) {
+                                @Override
+                                public void channelActive(ChannelHandlerContext ctx) throws Exception {
+                                    activeChannels.add(ctx);
+                                }
+
+                                @Override
+                                public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+                                    activeChannels.remove(ctx);
+                                }
+
+                                @Override
+                                public void channelRead(ChannelHandlerContext ctx, Object msg) {
+                                    super.channelRead(ctx, msg);
+                                    if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
+                                        ctx.attr(RouteMatcher.PATH).set(request.path());
+                                        ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
+                                    }
+                                }
+                            });
+                        } else {
+                            p.addLast("serverHandler", new HttpServerHandler(routeMatcher));
+                        }
                     }
                 });
 
         channel = b.bind(host, port).sync().channel();
+
     }
 
     public void stop() {
@@ -524,14 +610,10 @@ public class HttpServer {
         workerGroup.shutdownGracefully();
     }
 
-    static boolean applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor<RakamHttpRequest>> preprocessors) {
+    static void applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor<RakamHttpRequest>> preprocessors) {
         for (RequestPreprocessor<RakamHttpRequest> preprocessor : preprocessors) {
-            if(!preprocessor.handle(request.headers(), request)) {
-                return false;
-            }
+            preprocessor.handle(request.headers(), request);
         }
-
-        return true;
     }
 
     public static void returnError(RakamHttpRequest request, String message, HttpResponseStatus statusCode) {

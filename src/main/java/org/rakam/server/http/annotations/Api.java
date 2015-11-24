@@ -73,30 +73,6 @@ public @interface Api {
   String description() default "";
 
   /**
-   * Corresponds to the `basePath` field of the API Declaration.
-   * <p>
-   * The `basePath` is derived automatically by Swagger. This property allows
-   * overriding the default value if needed.  for swagger 2.0 specifications, this
-   * value is no longer supported
-   *
-   * @since 1.3.7
-   *
-   * @return the basePath for this operation
-   */
-  @Deprecated
-  String basePath() default "";
-
-  /**
-   * Optional explicit ordering of this API resource in the Resource Listing.
-   * As of swagger-spec 2.0, this value is no longer used
-   *
-   *
-   * @return the position of this API in the resource listing
-   */
-  @Deprecated
-  int position() default 0;
-
-  /**
    * Corresponds to the `produces` field of the API Declaration.
    * <p>
    * Takes in comma-separated values of content types.
@@ -110,6 +86,8 @@ public @interface Api {
    * @return the supported media types supported by the server, or an empty string if not set
    */
   String produces() default "";
+
+  String nickname() default "";
 
   /**
    * Corresponds to the `consumes` field of the API Declaration.
