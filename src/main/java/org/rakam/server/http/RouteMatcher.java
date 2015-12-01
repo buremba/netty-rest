@@ -73,10 +73,6 @@ public class RouteMatcher {
             }
             noMatch.handle(request);
         }
-
-        if(debugMode) {
-
-        }
     }
 
     private String cleanPath(String path) {
