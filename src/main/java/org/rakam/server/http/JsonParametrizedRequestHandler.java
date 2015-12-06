@@ -101,7 +101,13 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         values[0] = service;
         for (int i = 0; i < bodyParams.size(); i++) {
             IRequestParameter param = bodyParams.get(i);
-            Object value = param.extract(node, request);
+            Object value;
+            try {
+                value = param.extract(node, request);
+            } catch (Exception e) {
+                requestError(e, request);
+                return;
+            }
             if (param.required() && (value == null || value == NullNode.getInstance())) {
                 returnError(request, param.name() + " " + param.in() + " parameter is required", BAD_REQUEST);
                 return;
