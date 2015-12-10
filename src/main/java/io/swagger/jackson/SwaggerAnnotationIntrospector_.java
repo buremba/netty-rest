@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class SwaggerAnnotationIntrospector extends AnnotationIntrospector {
+public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     private static final long serialVersionUID = 1L;
 
     @Override
