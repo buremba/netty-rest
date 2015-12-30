@@ -14,6 +14,8 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.EpollEventLoopGroup;
+import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
@@ -41,6 +43,7 @@ import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ParamBody;
 import org.rakam.server.http.util.Lambda;
+import org.rakam.server.http.util.Os;
 import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
 import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
@@ -108,7 +111,7 @@ public class HttpServer {
         this.mapper = mapper;
         this.debugMode = debugMode;
 
-        this.bossGroup = new NioEventLoopGroup(1);
+        this.bossGroup = Os.supportsEpoll() ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overridenMappings);
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
         routeMatcher.add(HttpMethod.GET, "/api/swagger.json", this::swaggerApiHandle);
@@ -563,7 +566,7 @@ public class HttpServer {
         }
 
         b.group(bossGroup, workerGroup)
-                .channel(NioServerSocketChannel.class)
+                .channel(Os.supportsEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
                 .handler(new LoggingHandler(LogLevel.INFO))
                 .childHandler(new ChannelInitializer<SocketChannel>() {
                     @Override

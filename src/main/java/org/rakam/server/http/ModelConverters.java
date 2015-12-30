@@ -1,6 +1,5 @@
 package org.rakam.server.http;
 
-import com.fasterxml.jackson.databind.AnnotationIntrospector;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import io.swagger.converter.ModelConverter;
@@ -26,8 +25,6 @@ public class ModelConverters {
     private final Set<String> skippedClasses = new HashSet<String>();
 
     public ModelConverters(ObjectMapper mapper) {
-        AnnotationIntrospector annotationIntrospector = mapper.getDeserializationConfig().getAnnotationIntrospector();
-
         converters = new CopyOnWriteArrayList<>();
         ModelResolver e = new ModelResolver(mapper);
         converters.add(e);
@@ -78,7 +75,7 @@ public class ModelConverters {
             context.resolve(type);
             return context.getDefinedModels();
         }
-        return new HashMap<String, Model>();
+        return new HashMap<>();
     }
 
     private boolean shouldProcess(Type type) {

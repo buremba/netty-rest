@@ -29,7 +29,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
             this.request = new RakamHttpRequest(ctx, (io.netty.handler.codec.http.HttpRequest) msg);
             if (HttpHeaders.is100ContinueExpected(request)) {
-                ctx.write(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
+                ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
             } else {
                 routes.handle(request);
             }
