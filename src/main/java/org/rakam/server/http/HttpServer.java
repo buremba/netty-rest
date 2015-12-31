@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.log.Logger;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -30,8 +31,6 @@ import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ConcurrentSet;
-import io.netty.util.internal.logging.InternalLogger;
-import io.netty.util.internal.logging.InternalLoggerFactory;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
@@ -80,7 +79,7 @@ import static java.util.Objects.requireNonNull;
 import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer {
-    private final static InternalLogger LOGGER = InternalLoggerFactory.getInstance(HttpServer.class);
+    private final static Logger LOGGER = Logger.get(HttpServer.class);
     static final ObjectMapper DEFAULT_MAPPER;
 
     public final RouteMatcher routeMatcher;
@@ -458,7 +457,7 @@ public class HttpServer {
             HttpResponseStatus statusCode = e.getStatusCode();
             returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
-            LOGGER.error("An uncaught exception raised while processing request.", e);
+            LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
             returnResponse(mapper, request, BAD_REQUEST, errorMessage);
         }
@@ -472,7 +471,7 @@ public class HttpServer {
             HttpResponseStatus statusCode = e.getStatusCode();
             returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
-            LOGGER.error("An uncaught exception raised while processing request.", e);
+            LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
             returnResponse(mapper, request, BAD_REQUEST, errorMessage);
         }
@@ -494,7 +493,7 @@ public class HttpServer {
                 request.response(mapper.writeValueAsString(apply), status).end();
             }
         } catch (JsonProcessingException e) {
-            LOGGER.error("Couldn't serialize returned object", e);
+            LOGGER.error(e, "Couldn't serialize returned object");
             throw new RuntimeException("couldn't serialize object", e);
         }
     }
@@ -646,7 +645,7 @@ public class HttpServer {
             HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
             returnError(request, ex.getMessage(), statusCode);
         } else {
-            LOGGER.error("An uncaught exception raised while processing request.", ex);
+            LOGGER.error(ex, "An uncaught exception raised while processing request.");
             returnError(request, "error processing request: " + ex.getMessage(), INTERNAL_SERVER_ERROR);
         }
     }
