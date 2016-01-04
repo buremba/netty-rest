@@ -86,14 +86,15 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         ctx.close();
     }
 
-    protected static class DebugHttpServerHandler extends HttpServerHandler {
+    protected static class DebugHttpServerHandler extends ChannelInboundHandlerAdapter {
         private final ConcurrentSet<ChannelHandlerContext> activeChannels;
         private final AttributeKey<Integer> START_TIME;
+        private final HttpServerHandler serverHandler;
 
-        public DebugHttpServerHandler(RouteMatcher routeMatcher, ConcurrentSet<ChannelHandlerContext> activeChannels, AttributeKey<Integer> START_TIME) {
-            super(routeMatcher);
+        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, AttributeKey<Integer> START_TIME, HttpServerHandler handler) {
             this.activeChannels = activeChannels;
             this.START_TIME = START_TIME;
+            this.serverHandler = handler;
         }
 
         @Override
@@ -108,9 +109,9 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            super.channelRead(ctx, msg);
+            serverHandler.channelRead(ctx, msg);
             if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
-                ctx.attr(RouteMatcher.PATH).set(super.request.path());
+                ctx.attr(RouteMatcher.PATH).set(serverHandler.request.path());
                 ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
             }
         }

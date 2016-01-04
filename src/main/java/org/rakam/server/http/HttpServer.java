@@ -579,12 +579,13 @@ public class HttpServer {
                         ChannelPipeline p = ch.pipeline();
                         if(proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                        }
-                        p.addLast("httpCodec", new HttpServerCodec());
-                        if(debugMode) {
-                            p.addLast("serverHandler", new DebugHttpServerHandler(routeMatcher, activeChannels, START_TIME));
+                            p.addLast("httpCodec", new HttpServerCodec());
+                            HaProxyBackendServerHandler handler = new HaProxyBackendServerHandler(routeMatcher);
+                            p.addLast("serverHandler", debugMode ? new DebugHttpServerHandler(activeChannels, START_TIME, handler) : handler);
                         } else {
-                            p.addLast("serverHandler", new HttpServerHandler(routeMatcher));
+                            p.addLast("httpCodec", new HttpServerCodec());
+                            HttpServerHandler handler = new HttpServerHandler(routeMatcher);
+                            p.addLast("serverHandler",  debugMode ? new DebugHttpServerHandler(activeChannels, START_TIME, handler) : handler);
                         }
                     }
                 });
