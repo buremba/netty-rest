@@ -24,6 +24,7 @@ public class HttpServerBuilder {
     private Builder<PreprocessorEntry<ObjectNode>> jsonRequestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<RakamHttpRequest>> requestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
+    private boolean proxyProtocol;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -81,6 +82,10 @@ public class HttpServerBuilder {
         this.debugMode = debugMode;
         return this;
     }
+    public HttpServerBuilder setProxyProtocol(boolean proxyProtocol) {
+        this.proxyProtocol = proxyProtocol;
+        return this;
+    }
 
     public HttpServerBuilder setOverridenMappings(Map<Class, PrimitiveType> overridenMappings) {
         this.overridenMappings = overridenMappings;
@@ -93,6 +98,6 @@ public class HttpServerBuilder {
                 swagger, eventLoopGroup,
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings, debugMode);
+                overridenMappings, debugMode, proxyProtocol);
     }
 }

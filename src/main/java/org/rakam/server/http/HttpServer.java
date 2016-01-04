@@ -20,6 +20,7 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.haproxy.HAProxyMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
@@ -34,6 +35,7 @@ import io.netty.util.internal.ConcurrentSet;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
+import org.rakam.server.http.HttpServerHandler.DebugHttpServerHandler;
 import org.rakam.server.http.IRequestParameter.BodyParameter;
 import org.rakam.server.http.IRequestParameter.HeaderParameter;
 import org.rakam.server.http.annotations.ApiParam;
@@ -90,7 +92,9 @@ public class HttpServer {
     private final EventLoopGroup workerGroup;
     private final PreProcessors preProcessors;
     private final boolean debugMode;
+    private final boolean proxyProtocol;
     private Channel channel;
+
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
             .put(LocalDate.class, PrimitiveType.DATE)
             .put(Duration.class, PrimitiveType.STRING)
@@ -102,13 +106,14 @@ public class HttpServer {
     }
 
 
-    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings, boolean debugMode) {
+    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings, boolean debugMode, boolean proxyProtocol) {
         this.routeMatcher = new RouteMatcher(debugMode);
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
         this.mapper = mapper;
         this.debugMode = debugMode;
+        this.proxyProtocol = proxyProtocol;
 
         this.bossGroup = Os.supportsEpoll() ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overridenMappings);
@@ -572,28 +577,12 @@ public class HttpServer {
                     protected void initChannel(SocketChannel ch)
                             throws Exception {
                         ChannelPipeline p = ch.pipeline();
+                        if(proxyProtocol) {
+                            p.addLast(new HAProxyMessageDecoder());
+                        }
                         p.addLast("httpCodec", new HttpServerCodec());
                         if(debugMode) {
-                            p.addLast("serverHandler", new HttpServerHandler(routeMatcher) {
-                                @Override
-                                public void channelActive(ChannelHandlerContext ctx) throws Exception {
-                                    activeChannels.add(ctx);
-                                }
-
-                                @Override
-                                public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-                                    activeChannels.remove(ctx);
-                                }
-
-                                @Override
-                                public void channelRead(ChannelHandlerContext ctx, Object msg) {
-                                    super.channelRead(ctx, msg);
-                                    if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
-                                        ctx.attr(RouteMatcher.PATH).set(request.path());
-                                        ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
-                                    }
-                                }
-                            });
+                            p.addLast("serverHandler", new DebugHttpServerHandler(routeMatcher, activeChannels, START_TIME));
                         } else {
                             p.addLast("serverHandler", new HttpServerHandler(routeMatcher));
                         }

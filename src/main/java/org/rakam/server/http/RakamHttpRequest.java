@@ -16,6 +16,7 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 
+import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -31,10 +32,23 @@ public class RakamHttpRequest implements HttpRequest {
     private ByteBuf emptyBuffer  = Unpooled.wrappedBuffer(new byte[0]);
 
     private QueryStringDecoder qs;
+    private String remoteAddress;
 
     public RakamHttpRequest(ChannelHandlerContext ctx, HttpRequest request) {
         this.ctx = ctx;
         this.request = request;
+    }
+
+    public RakamHttpRequest(ChannelHandlerContext ctx) {
+        this.ctx = ctx;
+    }
+
+    void setRequest(HttpRequest request) {
+        this.request = request;
+    }
+
+    public String getRemoteAddress() {
+        return remoteAddress == null ? ((InetSocketAddress) context().channel().remoteAddress()).getHostString() : remoteAddress;
     }
 
     HttpRequest getRequest() {
@@ -174,6 +188,10 @@ public class RakamHttpRequest implements HttpRequest {
         response.headers().set(CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
         ctx.writeAndFlush(response);
         return new StreamResponse(ctx);
+    }
+
+    void setRemoteAddress(String remoteAddress) {
+        this.remoteAddress = remoteAddress;
     }
 
     public class StreamResponse {

@@ -8,7 +8,9 @@ import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
+import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
+import io.netty.util.internal.ConcurrentSet;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.CONTINUE;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
@@ -16,7 +18,7 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     protected RakamHttpRequest request;
-    private RouteMatcher routes;
+    RouteMatcher routes;
     private StringBuilder body = new StringBuilder(2 << 15);
     private static String EMPTY_BODY = "";
 
@@ -24,8 +26,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         this.routes = routes;
     }
 
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    public boolean readMessage(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
             this.request = new RakamHttpRequest(ctx, (io.netty.handler.codec.http.HttpRequest) msg);
             if (HttpHeaders.is100ContinueExpected(request)) {
@@ -33,7 +34,18 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
             } else {
                 routes.handle(request);
             }
-        } else if (msg instanceof LastHttpContent) {
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if(readMessage(ctx, msg)) {
+            return;
+        }
+
+        if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
                 String s = chunk.content().toString(CharsetUtil.UTF_8);
@@ -72,6 +84,36 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         cause.printStackTrace();
         ctx.close();
+    }
+
+    protected static class DebugHttpServerHandler extends HttpServerHandler {
+        private final ConcurrentSet<ChannelHandlerContext> activeChannels;
+        private final AttributeKey<Integer> START_TIME;
+
+        public DebugHttpServerHandler(RouteMatcher routeMatcher, ConcurrentSet<ChannelHandlerContext> activeChannels, AttributeKey<Integer> START_TIME) {
+            super(routeMatcher);
+            this.activeChannels = activeChannels;
+            this.START_TIME = START_TIME;
+        }
+
+        @Override
+        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+            activeChannels.add(ctx);
+        }
+
+        @Override
+        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+            activeChannels.remove(ctx);
+        }
+
+        @Override
+        public void channelRead(ChannelHandlerContext ctx, Object msg) {
+            super.channelRead(ctx, msg);
+            if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
+                ctx.attr(RouteMatcher.PATH).set(super.request.path());
+                ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
+            }
+        }
     }
 }
 
