@@ -64,6 +64,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
@@ -151,7 +152,7 @@ public class HttpServer {
 
     private void registerEndPoints(Set<HttpService> httpServicePlugins, Map<Class, PrimitiveType> overriddenMappings) {
         Map<Class, PrimitiveType> swaggerBeanMappings;
-        if(overriddenMappings != null) {
+        if (overriddenMappings != null) {
             swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder().putAll(this.swaggerBeanMappings).putAll(overriddenMappings).build();
         } else {
             swaggerBeanMappings = this.swaggerBeanMappings;
@@ -194,10 +195,10 @@ public class HttpServer {
                         HttpMethod httpMethod = methodExists.next();
 
                         if (jsonRequest != null && httpMethod != POST) {
-                            if(Arrays.stream(method.getParameters()).anyMatch(p -> p.isAnnotationPresent(ApiParam.class))) {
+                            if (Arrays.stream(method.getParameters()).anyMatch(p -> p.isAnnotationPresent(ApiParam.class))) {
                                 throw new IllegalStateException("@ApiParam annotation can only be used within POST requests");
                             }
-                            if(method.getParameterCount() == 1 && method.getParameters()[0].isAnnotationPresent(ParamBody.class)) {
+                            if (method.getParameterCount() == 1 && method.getParameters()[0].isAnnotationPresent(ParamBody.class)) {
                                 throw new IllegalStateException("@ParamBody annotation can only be used within POST requests");
                             }
                         }
@@ -237,7 +238,7 @@ public class HttpServer {
             } else if (parameter.isAnnotationPresent(HeaderParam.class)) {
                 HeaderParam param = parameter.getAnnotation(HeaderParam.class);
                 bodyParams.add(new HeaderParameter(param.value(), param.required()));
-            }else if (parameter.isAnnotationPresent(CookieParam.class)) {
+            } else if (parameter.isAnnotationPresent(CookieParam.class)) {
                 CookieParam param = parameter.getAnnotation(CookieParam.class);
                 bodyParams.add(new IRequestParameter.CookieParameter(param.name(), param.required()));
             } else {
@@ -255,13 +256,13 @@ public class HttpServer {
             return request -> {
                 Object invoke;
                 try {
-                    if(!preprocessorForJsonRequest.isEmpty()) {
+                    if (!preprocessorForJsonRequest.isEmpty()) {
                         for (RequestPreprocessor<ObjectNode> preprocessor : preprocessorForJsonRequest) {
                             preprocessor.handle(request.headers(), emptyNode);
                         }
                     }
 
-                    if(!preprocessorRequest.isEmpty()) {
+                    if (!preprocessorRequest.isEmpty()) {
                         HttpServer.applyPreprocessors(request, preprocessorRequest);
                     }
 
@@ -292,11 +293,11 @@ public class HttpServer {
     private Type getActualType(Class readClass, Type parameterizedType) {
         // if the parameter has a generic type, it will be read as Object
         // so we need to find the actual implementation and return that type.
-        if(parameterizedType instanceof TypeVariableImpl) {
+        if (parameterizedType instanceof TypeVariableImpl) {
             TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
             Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();
             for (int i = 0; i < genericParameters.length; i++) {
-                if(genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
+                if (genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
                     return implementations[i];
                 }
             }
@@ -343,7 +344,7 @@ public class HttpServer {
             lambda = Lambda.produceLambdaForConsumer(method);
             return request -> {
                 try {
-                    if(!requestPreprocessors.isEmpty()) {
+                    if (!requestPreprocessors.isEmpty()) {
                         HttpServer.applyPreprocessors(request, requestPreprocessors);
                     }
 
@@ -374,7 +375,7 @@ public class HttpServer {
             Function<HttpService, Object> function = produceLambdaForFunction(method);
             return (request) -> {
                 try {
-                    if(!preprocessors.isEmpty()) {
+                    if (!preprocessors.isEmpty()) {
                         applyPreprocessors(request, preprocessors);
                     }
                 } catch (Throwable e) {
@@ -401,7 +402,7 @@ public class HttpServer {
             if (method.getParameterTypes()[0].equals(ObjectNode.class)) {
                 return request -> {
                     try {
-                        if(!preprocessors.isEmpty()) {
+                        if (!preprocessors.isEmpty()) {
                             HttpServer.applyPreprocessors(request, preprocessors);
                         }
                     } catch (Throwable e) {
@@ -427,7 +428,7 @@ public class HttpServer {
             } else {
                 return request -> {
                     try {
-                        if(!preprocessors.isEmpty()) {
+                        if (!preprocessors.isEmpty()) {
                             HttpServer.applyPreprocessors(request, preprocessors);
                         }
                     } catch (Throwable e) {
@@ -484,7 +485,7 @@ public class HttpServer {
 
     private static void returnResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply) {
         try {
-            if(apply instanceof Response) {
+            if (apply instanceof Response) {
                 final Response apply1 = (Response) apply;
                 final byte[] bytes = mapper.writeValueAsBytes(apply1.getData());
                 final ByteBuf byteBuf = Unpooled.wrappedBuffer(bytes);
@@ -506,6 +507,9 @@ public class HttpServer {
     static void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply) {
         apply.whenComplete((BiConsumer<Object, Throwable>) (result, ex) -> {
             if (ex != null) {
+                while (ex instanceof CompletionException) {
+                    ex = ex.getCause();
+                }
                 if (ex instanceof HttpRequestException) {
                     HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
                     returnResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode));
@@ -535,17 +539,17 @@ public class HttpServer {
 
         ConcurrentSet<ChannelHandlerContext> activeChannels = new ConcurrentSet();
 
-        if(debugMode) {
+        if (debugMode) {
             routeMatcher.add(HttpMethod.GET, "/active-client/count",
                     request -> request.response(Integer.toString(activeChannels.size())).end());
 
             routeMatcher.add(HttpMethod.GET, "/active-client/list", request -> {
-                int now = (int) (System.currentTimeMillis()/1000);
+                int now = (int) (System.currentTimeMillis() / 1000);
 
                 String collect = activeChannels.stream().map(c -> {
                     String s = c.channel().remoteAddress().toString();
                     Integer integer = c.attr(START_TIME).get();
-                    if(integer != null) {
+                    if (integer != null) {
                         s += " " + (now - integer) + "s ";
                     } else {
                         s += " ? ";
@@ -577,7 +581,7 @@ public class HttpServer {
                             throws Exception {
                         ChannelPipeline p = ch.pipeline();
                         HttpServerHandler handler;
-                        if(proxyProtocol) {
+                        if (proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
                             handler = new HaProxyBackendServerHandler(routeMatcher);
                         } else {
@@ -585,7 +589,7 @@ public class HttpServer {
                         }
 
                         p.addLast("httpCodec", new HttpServerCodec());
-                        if(debugMode) {
+                        if (debugMode) {
                             p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, handler));
                         } else {
                             p.addLast("serverHandler", handler);
