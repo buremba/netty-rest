@@ -577,16 +577,21 @@ public class HttpServer {
                     protected void initChannel(SocketChannel ch)
                             throws Exception {
                         ChannelPipeline p = ch.pipeline();
+                        HttpServerHandler handler;
                         if(proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                            p.addLast("httpCodec", new HttpServerCodec());
-                            HaProxyBackendServerHandler handler = new HaProxyBackendServerHandler(routeMatcher);
-                            p.addLast("serverHandler", debugMode ? new DebugHttpServerHandler(activeChannels, START_TIME, handler) : handler);
+                            handler = new HaProxyBackendServerHandler(routeMatcher);
                         } else {
-                            p.addLast("httpCodec", new HttpServerCodec());
-                            HttpServerHandler handler = new HttpServerHandler(routeMatcher);
-                            p.addLast("serverHandler",  debugMode ? new DebugHttpServerHandler(activeChannels, START_TIME, handler) : handler);
+                            handler = new HttpServerHandler(routeMatcher);
                         }
+
+                        p.addLast("httpCodec", new HttpServerCodec());
+                        if(debugMode) {
+                            p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, START_TIME, handler));
+                        } else {
+                            p.addLast("serverHandler", handler);
+                        }
+
                     }
                 });
 

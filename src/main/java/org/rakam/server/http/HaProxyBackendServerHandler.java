@@ -19,7 +19,8 @@ public class HaProxyBackendServerHandler extends HttpServerHandler {
             this.request = new RakamHttpRequest(ctx);
             this.request.setRemoteAddress(((HAProxyMessage) msg).sourceAddress());
             return true;
-        } else
+        }
+
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
             this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
             if (HttpHeaders.is100ContinueExpected(request)) {
@@ -28,8 +29,8 @@ public class HaProxyBackendServerHandler extends HttpServerHandler {
                 routes.handle(request);
             }
             return true;
-        } else {
-            return false;
         }
+
+        return false;
     }
 }
