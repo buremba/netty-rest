@@ -40,7 +40,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if(readMessage(ctx, msg)) {
             return;
         }
@@ -77,6 +77,8 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
         } else if (msg instanceof WebSocketFrame) {
             routes.handle(ctx, (WebSocketFrame) msg);
+        } else {
+            super.channelRead(ctx, msg);
         }
     }
 
@@ -108,12 +110,19 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
             serverHandler.channelRead(ctx, msg);
+
             if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
                 ctx.attr(RouteMatcher.PATH).set(serverHandler.request.path());
                 ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
             }
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+            cause.printStackTrace();
+            ctx.close();
         }
     }
 }
