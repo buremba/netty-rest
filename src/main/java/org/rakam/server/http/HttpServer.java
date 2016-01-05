@@ -30,7 +30,6 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
-import io.netty.util.AttributeKey;
 import io.netty.util.internal.ConcurrentSet;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
@@ -78,6 +77,7 @@ import static io.netty.handler.codec.http.HttpResponseStatus.*;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
+import static org.rakam.server.http.HttpServerHandler.DebugHttpServerHandler.START_TIME;
 import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer {
@@ -534,7 +534,6 @@ public class HttpServer {
         b.option(ChannelOption.SO_BACKLOG, 1024);
 
         ConcurrentSet<ChannelHandlerContext> activeChannels = new ConcurrentSet();
-        AttributeKey<Integer> START_TIME = AttributeKey.valueOf("/start_time");
 
         if(debugMode) {
             routeMatcher.add(HttpMethod.GET, "/active-client/count",
@@ -587,7 +586,7 @@ public class HttpServer {
 
                         p.addLast("httpCodec", new HttpServerCodec());
                         if(debugMode) {
-                            p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, START_TIME, handler));
+                            p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, handler));
                         } else {
                             p.addLast("serverHandler", handler);
                         }

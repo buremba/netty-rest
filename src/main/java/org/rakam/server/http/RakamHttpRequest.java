@@ -34,11 +34,6 @@ public class RakamHttpRequest implements HttpRequest {
     private QueryStringDecoder qs;
     private String remoteAddress;
 
-    public RakamHttpRequest(ChannelHandlerContext ctx, HttpRequest request) {
-        this.ctx = ctx;
-        this.request = request;
-    }
-
     public RakamHttpRequest(ChannelHandlerContext ctx) {
         this.ctx = ctx;
     }

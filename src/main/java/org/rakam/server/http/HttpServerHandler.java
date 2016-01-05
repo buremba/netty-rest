@@ -26,25 +26,21 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         this.routes = routes;
     }
 
-    public boolean readMessage(ChannelHandlerContext ctx, Object msg) {
+    RakamHttpRequest createRequest(ChannelHandlerContext ctx) {
+        return new RakamHttpRequest(ctx);
+    }
+
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
-            this.request = new RakamHttpRequest(ctx, (io.netty.handler.codec.http.HttpRequest) msg);
+            this.request = createRequest(ctx);
+            this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
             if (HttpHeaders.is100ContinueExpected(request)) {
                 ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
             } else {
                 routes.handle(request);
             }
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
-        if(readMessage(ctx, msg)) {
-            return;
-        }
-
+        }else
         if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
@@ -78,7 +74,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         } else if (msg instanceof WebSocketFrame) {
             routes.handle(ctx, (WebSocketFrame) msg);
         } else {
-            super.channelRead(ctx, msg);
+//            super.channelRead(ctx, msg);
         }
     }
 
@@ -90,12 +86,11 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
     protected static class DebugHttpServerHandler extends ChannelInboundHandlerAdapter {
         private final ConcurrentSet<ChannelHandlerContext> activeChannels;
-        private final AttributeKey<Integer> START_TIME;
         private final HttpServerHandler serverHandler;
+        final static AttributeKey<Integer> START_TIME = AttributeKey.valueOf("/start_time");
 
-        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, AttributeKey<Integer> START_TIME, HttpServerHandler handler) {
+        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, HttpServerHandler handler) {
             this.activeChannels = activeChannels;
-            this.START_TIME = START_TIME;
             this.serverHandler = handler;
         }
 
