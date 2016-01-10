@@ -514,7 +514,8 @@ public class HttpServer {
                     HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
                     returnResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode));
                 } else {
-                    request.response(ex.getMessage()).end();
+                    returnResponse(mapper, request, INTERNAL_SERVER_ERROR, errorMessage(INTERNAL_SERVER_ERROR.reasonPhrase(), INTERNAL_SERVER_ERROR));
+                    LOGGER.error(ex, "Error while processing request");
                 }
             } else {
                 if (result instanceof String) {
