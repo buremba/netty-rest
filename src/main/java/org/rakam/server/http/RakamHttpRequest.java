@@ -151,14 +151,12 @@ public class RakamHttpRequest implements HttpRequest {
         }
         boolean keepAlive = HttpHeaders.isKeepAlive(request);
 
-        response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
         for (Map.Entry<String, String> entry : request.headers()) {
             if (entry.getKey().equals("Origin")) {
                 response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, entry.getValue());
                 break;
             }
         }
-        response.headers().set(ACCESS_CONTROL_ALLOW_CREDENTIALS, "true");
 
         if (keepAlive) {
             response.headers().set(CONTENT_LENGTH, response.content().readableBytes());

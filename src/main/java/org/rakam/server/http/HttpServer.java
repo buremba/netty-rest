@@ -7,7 +7,6 @@ import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.log.Logger;
 import io.netty.bootstrap.ServerBootstrap;
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -22,12 +21,9 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.haproxy.HAProxyMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.HttpHeaders;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.HttpVersion;
-import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.internal.ConcurrentSet;
@@ -73,8 +69,11 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.CONTENT_TYPE;
+import static io.netty.handler.codec.http.HttpHeaders.Names.SET_COOKIE;
 import static io.netty.handler.codec.http.HttpMethod.POST;
 import static io.netty.handler.codec.http.HttpResponseStatus.*;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
+import static io.netty.handler.codec.http.cookie.ServerCookieEncoder.STRICT;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
@@ -222,6 +221,7 @@ public class HttpServer {
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
         final List<RequestPreprocessor<RakamHttpRequest>> preprocessorRequest = getPreprocessorRequest(method);
 
+        //        if (Arrays.stream(method.getParameters()).anyMatch(p -> p.isAnnotationPresent(ParamBody.class))) {
         if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             return new JsonBeanRequestHandler(mapper, method,
                     getPreprocessorForJsonBeanRequest(method),
@@ -324,7 +324,7 @@ public class HttpServer {
         if (isAsync) {
             handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke);
         } else {
-            returnResponse(mapper, request, OK, invoke);
+            returnJsonResponse(mapper, request, OK, invoke);
         }
     }
 
@@ -458,41 +458,41 @@ public class HttpServer {
     static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, BiFunction<HttpService, Object, Object> function, Object json) {
         try {
             Object apply = function.apply(serviceInstance, json);
-            returnResponse(mapper, request, OK, apply);
+            returnJsonResponse(mapper, request, OK, apply);
         } catch (HttpRequestException e) {
             HttpResponseStatus statusCode = e.getStatusCode();
-            returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
+            returnJsonResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
             LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
-            returnResponse(mapper, request, BAD_REQUEST, errorMessage);
+            returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage);
         }
     }
 
     static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function) {
         try {
             Object apply = function.apply(serviceInstance);
-            returnResponse(mapper, request, OK, apply);
+            returnJsonResponse(mapper, request, OK, apply);
         } catch (HttpRequestException e) {
             HttpResponseStatus statusCode = e.getStatusCode();
-            returnResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
+            returnJsonResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode));
         } catch (Exception e) {
             LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
-            returnResponse(mapper, request, BAD_REQUEST, errorMessage);
+            returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage);
         }
     }
 
-    private static void returnResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply) {
+    private static void returnJsonResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply) {
         try {
             if (apply instanceof Response) {
-                final Response apply1 = (Response) apply;
-                final byte[] bytes = mapper.writeValueAsBytes(apply1.getData());
-                final ByteBuf byteBuf = Unpooled.wrappedBuffer(bytes);
-                final DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, byteBuf);
-                if (apply1.getCookies() != null) {
-                    response.headers().add(HttpHeaders.Names.SET_COOKIE,
-                            ServerCookieEncoder.STRICT.encode(apply1.getCookies()));
+                Response responseData = (Response) apply;
+                byte[] bytes = mapper.writeValueAsBytes(responseData.getData());
+                DefaultFullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(bytes));
+                response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
+
+                if (responseData.getCookies() != null) {
+                    response.headers().add(SET_COOKIE, STRICT.encode(responseData.getCookies()));
                 }
                 request.response(response).end();
             } else {
@@ -512,9 +512,9 @@ public class HttpServer {
                 }
                 if (ex instanceof HttpRequestException) {
                     HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-                    returnResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode));
+                    returnJsonResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode));
                 } else {
-                    returnResponse(mapper, request, INTERNAL_SERVER_ERROR, errorMessage(INTERNAL_SERVER_ERROR.reasonPhrase(), INTERNAL_SERVER_ERROR));
+                    returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR, errorMessage(INTERNAL_SERVER_ERROR.reasonPhrase(), INTERNAL_SERVER_ERROR));
                     LOGGER.error(ex, "Error while processing request");
                 }
             } else {
@@ -563,8 +563,8 @@ public class HttpServer {
                 }).collect(Collectors.joining("\n"));
 
                 try {
-                    DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1,
-                            HttpResponseStatus.OK, Unpooled.wrappedBuffer(collect.getBytes("UTF-8")));
+                    DefaultFullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1,
+                            OK, Unpooled.wrappedBuffer(collect.getBytes("UTF-8")));
                     response.headers().set(CONTENT_TYPE, "text/plain");
                     request.response(response).end();
                 } catch (UnsupportedEncodingException e) {
