@@ -27,13 +27,16 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final HttpService service;
     private final List<RequestPreprocessor<Object>> jsonPreprocessors;
     private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
+    private final List<ResponsePostProcessor> postProcessors;
 
     public JsonBeanRequestHandler(ObjectMapper mapper, Method method,
                                   List<RequestPreprocessor<Object>> jsonPreprocessors,
                                   List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
+                                  List<ResponsePostProcessor> postProcessors,
                                   HttpService service) {
         this.mapper = mapper;
         this.service = service;
+        this.postProcessors = postProcessors;
 
         function = Lambda.produceLambdaForBiFunction(method);
         isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
@@ -88,9 +91,9 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                     requestError(e, request);
                     return;
                 }
-                handleAsyncJsonRequest(mapper, request, apply);
+                handleAsyncJsonRequest(mapper, request, apply, postProcessors);
             } else {
-                handleJsonRequest(mapper, service, request, function, json);
+                handleJsonRequest(mapper, service, request, function, json, postProcessors);
             }
         });
     }

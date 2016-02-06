@@ -25,6 +25,7 @@ public class HttpServerBuilder {
     private Builder<PreprocessorEntry<RakamHttpRequest>> requestPreprocessors = ImmutableList.builder();
     private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
     private boolean proxyProtocol;
+    private Builder<PostProcessorEntry> requestPostprocessors = ImmutableList.builder();
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -55,6 +56,12 @@ public class HttpServerBuilder {
 
     public HttpServerBuilder addPreprocessor(RequestPreprocessor<RakamHttpRequest> preprocessor, Predicate<Method> predicate) {
         requestPreprocessors.add(new PreprocessorEntry<>(preprocessor, predicate));
+        return this;
+    }
+
+
+    public HttpServerBuilder addPostProcessor(ResponsePostProcessor processor, Predicate<Method> predicate) {
+        requestPostprocessors.add(new PostProcessorEntry(processor, predicate));
         return this;
     }
 
@@ -97,6 +104,7 @@ public class HttpServerBuilder {
                 httpServices, websockerServices,
                 swagger, eventLoopGroup,
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
+                requestPostprocessors.build(),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
                 overridenMappings, debugMode, proxyProtocol);
     }

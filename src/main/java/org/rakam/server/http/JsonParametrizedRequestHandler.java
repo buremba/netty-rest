@@ -39,11 +39,21 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         }
     }
 
-    public JsonParametrizedRequestHandler(ObjectMapper mapper, ArrayList<IRequestParameter> bodyParams, MethodHandle methodHandle, HttpService service, List<RequestPreprocessor<ObjectNode>> jsonPreprocessors, List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors, boolean isAsync) {
+    private final List<ResponsePostProcessor> postProcessors;
+
+    public JsonParametrizedRequestHandler(ObjectMapper mapper,
+                                          ArrayList<IRequestParameter> bodyParams,
+                                          MethodHandle methodHandle,
+                                          List<ResponsePostProcessor> postProcessors,
+                                          HttpService service,
+                                          List<RequestPreprocessor<ObjectNode>> jsonPreprocessors,
+                                          List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
+                                          boolean isAsync) {
         this.mapper = mapper;
         this.bodyParams = bodyParams;
         this.methodHandle = methodHandle;
         this.service = service;
+        this.postProcessors = postProcessors;
         this.isAsync = isAsync;
         this.jsonPreprocessors = jsonPreprocessors;
         this.requestPreprocessors = requestPreprocessors;
@@ -124,6 +134,6 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
             return;
         }
 
-        handleRequest(mapper, isAsync, invoke, request);
+        handleRequest(mapper, isAsync, invoke, request, postProcessors);
     }
 }
