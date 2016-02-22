@@ -1,5 +1,6 @@
 package org.rakam.server.http;
 
+import com.google.common.collect.ImmutableSet;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFutureListener;
@@ -15,21 +16,26 @@ import io.netty.handler.codec.http.HttpResponse;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
+import io.netty.handler.codec.http.cookie.Cookie;
 
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Consumer;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.*;
+import static io.netty.handler.codec.http.HttpResponseStatus.OK;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
+import static io.netty.handler.codec.http.cookie.ServerCookieDecoder.STRICT;
 import static io.netty.util.CharsetUtil.UTF_8;
 
 public class RakamHttpRequest implements HttpRequest {
     private final ChannelHandlerContext ctx;
-    private io.netty.handler.codec.http.HttpRequest request;
+    private HttpRequest request;
     private FullHttpResponse response;
     private Consumer<String> bodyHandler;
-    private ByteBuf emptyBuffer  = Unpooled.wrappedBuffer(new byte[0]);
+    private Set<Cookie> cookies;
 
     private QueryStringDecoder qs;
     private String remoteAddress;
@@ -110,19 +116,27 @@ public class RakamHttpRequest implements HttpRequest {
 
     public RakamHttpRequest response(String content) {
         final ByteBuf byteBuf = Unpooled.wrappedBuffer(content.getBytes(UTF_8));
-        response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, byteBuf);
+        response = new DefaultFullHttpResponse(HTTP_1_1, OK, byteBuf);
         return this;
+    }
+
+    public Set<Cookie> cookies() {
+        if(cookies == null) {
+            String header = request.headers().get(COOKIE);
+            cookies = header != null ? STRICT.decode(header) : ImmutableSet.of();
+        }
+        return cookies;
     }
 
     public RakamHttpRequest response(byte[] content) {
         final ByteBuf byteBuf = Unpooled.copiedBuffer(content);
-        response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, byteBuf);
+        response = new DefaultFullHttpResponse(HTTP_1_1, OK, byteBuf);
         return this;
     }
 
     public RakamHttpRequest response(String content, HttpResponseStatus status) {
         final ByteBuf byteBuf = Unpooled.wrappedBuffer(content.getBytes(UTF_8));
-        response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, status, byteBuf);
+        response = new DefaultFullHttpResponse(HTTP_1_1, status, byteBuf);
         return this;
     }
 
@@ -147,7 +161,7 @@ public class RakamHttpRequest implements HttpRequest {
 
     public void end() {
         if(response == null) {
-            response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK, emptyBuffer);
+            response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(new byte[0]));
         }
         boolean keepAlive = HttpHeaders.isKeepAlive(request);
 
@@ -168,14 +182,14 @@ public class RakamHttpRequest implements HttpRequest {
         }
     }
 
-    public void handleBody(String s) {
+    void handleBody(String s) {
         if (bodyHandler != null) {
             bodyHandler.accept(s);
         }
     }
 
     public StreamResponse streamResponse() {
-        HttpResponse response = new DefaultHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+        HttpResponse response = new DefaultHttpResponse(HTTP_1_1, OK);
         response.headers().set(CONTENT_TYPE, "text/event-stream");
         response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, "*");
         response.headers().set(CONNECTION, HttpHeaders.Values.KEEP_ALIVE);

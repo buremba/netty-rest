@@ -12,7 +12,6 @@ import com.google.common.base.Throwables;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
-import java.util.ArrayList;
 import java.util.List;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
@@ -42,7 +41,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
     private final List<ResponsePostProcessor> postProcessors;
 
     public JsonParametrizedRequestHandler(ObjectMapper mapper,
-                                          ArrayList<IRequestParameter> bodyParams,
+                                          List<IRequestParameter> bodyParams,
                                           MethodHandle methodHandle,
                                           List<ResponsePostProcessor> postProcessors,
                                           HttpService service,
