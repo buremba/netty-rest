@@ -119,7 +119,7 @@ public class SwaggerReader {
         Api api = cls.getAnnotation(Api.class);
         javax.ws.rs.Path apiPath = cls.getAnnotation(javax.ws.rs.Path.class);
 
-        if(cls.isAnnotationPresent(IgnoreApi.class)) {
+        if (cls.isAnnotationPresent(IgnoreApi.class)) {
             return swagger;
         }
 
@@ -146,7 +146,7 @@ public class SwaggerReader {
                 ApiOperation apiOperation = method.getAnnotation(ApiOperation.class);
                 javax.ws.rs.Path methodPath = method.getAnnotation(javax.ws.rs.Path.class);
 
-                if(method.isAnnotationPresent(IgnoreApi.class)) {
+                if (method.isAnnotationPresent(IgnoreApi.class)) {
                     continue;
                 }
 
@@ -224,21 +224,20 @@ public class SwaggerReader {
                         tags.forEach(operation::tag);
 
                         if (operation != null) {
-                            Consumes consumes = method.getAnnotation(Consumes.class);
-                            if (consumes != null) {
-                                operation.consumes(Arrays.asList(consumes.value()));
-                            } else
-                            if(!apiOperation.consumes().isEmpty()) {
-                                operation.consumes(apiOperation.consumes());
-                            } else {
-                                operation.consumes("application/json");
+                            Consumes consumesAnn = method.getAnnotation(Consumes.class);
+                            if (consumesAnn != null && !Arrays.asList(consumesAnn.value()).stream().anyMatch(a -> a.startsWith("application/json"))) {
+                                continue;
                             }
+                            if (!apiOperation.consumes().isEmpty() && !apiOperation.consumes().startsWith("application/json")) {
+                                continue;
+                            }
+
+                            operation.consumes("application/json");
 
                             Produces produces = method.getAnnotation(Produces.class);
                             if (produces != null) {
                                 operation.produces(Arrays.asList(produces.value()));
-                            } else
-                            if(!apiOperation.produces().isEmpty()) {
+                            } else if (!apiOperation.produces().isEmpty()) {
                                 operation.produces(apiOperation.produces());
                             } else {
                                 operation.produces("application/json");
@@ -354,7 +353,7 @@ public class SwaggerReader {
             Type responseClass = method.getGenericReturnType();
 
             ParameterizedType type;
-            if(responseClass instanceof ParameterizedType) {
+            if (responseClass instanceof ParameterizedType) {
                 type = (ParameterizedType) responseClass;
             } else {
                 try {
@@ -482,8 +481,11 @@ public class SwaggerReader {
         Map<String, Property> defaultResponseHeaders = new HashMap<>();
 
         Api parentApi = (Api) readClass.getAnnotation(Api.class);
-        String methodIdentifier = !apiOperation.nickname().isEmpty() ? apiOperation.nickname() :
-                parentApi.nickname()+""+method.getName().substring(0, 1).toUpperCase() + method.getName().substring(1);
+        String nickname = !apiOperation.nickname().isEmpty() ? apiOperation.nickname() : parentApi.nickname();
+        if (nickname.isEmpty()) {
+            nickname = method.getDeclaringClass().getName().replace(".", "_");
+        }
+        String methodIdentifier = nickname + "_" + method.getName().substring(0, 1).toUpperCase() + method.getName().substring(1);
 
         if (apiOperation != null) {
             if (apiOperation.hidden())
@@ -515,12 +517,12 @@ public class SwaggerReader {
             }
         }
 
-        if(method.isAnnotationPresent(JsonRequest.class)) {
+        if (method.isAnnotationPresent(JsonRequest.class)) {
             responseClass = getActualReturnType(method);
         }
 
         if (responseClass != null && !responseClass.equals(java.lang.Void.class)) {
-            if(responseClass instanceof Class && TypeToken.class.equals(((Class) responseClass).getSuperclass())) {
+            if (responseClass instanceof Class && TypeToken.class.equals(((Class) responseClass).getSuperclass())) {
                 responseClass = ((ParameterizedType) ((Class) responseClass).getGenericSuperclass()).getActualTypeArguments()[0];
             }
             if (isPrimitive(responseClass)) {
@@ -541,12 +543,12 @@ public class SwaggerReader {
             } else if (!responseClass.equals(java.lang.Void.class) && !"void".equals(responseClass.toString())) {
                 String name = responseClass.getTypeName();
                 Model model = modelConverters.read(responseClass).get(name);
-                if(model == null) {
-                        Property p = modelConverters.readAsProperty(responseClass);
-                        operation.response(200, new Response()
-                                .description("successful operation")
-                                .schema(p)
-                                .headers(defaultResponseHeaders));
+                if (model == null) {
+                    Property p = modelConverters.readAsProperty(responseClass);
+                    operation.response(200, new Response()
+                            .description("successful operation")
+                            .schema(p)
+                            .headers(defaultResponseHeaders));
                 } else {
                     model.setReference(responseClass.getTypeName());
 
@@ -620,7 +622,7 @@ public class SwaggerReader {
         String name, reference;
         if (!apiOperation.request().equals(Void.class)) {
             Class<?> clazz = apiOperation.request();
-            if(clazz.getSuperclass().equals(TypeToken.class)) {
+            if (clazz.getSuperclass().equals(TypeToken.class)) {
                 explicitType = ((ParameterizedType) clazz.getGenericSuperclass()).getActualTypeArguments()[0];
                 parameters = null;
                 name = null;
@@ -630,8 +632,7 @@ public class SwaggerReader {
                 name = clazz.getSimpleName();
                 reference = clazz.getName();
             }
-        } else
-        if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
+        } else if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
             Class type = method.getParameters()[0].getType();
 
             if (modelConverters.readAsProperty(method.getParameters()[0].getParameterizedType()) instanceof ArrayProperty) {
@@ -645,12 +646,12 @@ public class SwaggerReader {
                 reference = type.getName();
             }
         } else {
-            parameters =  method.getParameters();
+            parameters = method.getParameters();
             name = methodIdentifier;
             reference = methodIdentifier;
         }
 
-        if(parameters != null && parameters.length > 0) {
+        if (parameters != null && parameters.length > 0) {
             java.lang.reflect.Parameter firstParameter = parameters[0];
             if (firstParameter.isAnnotationPresent(ApiParam.class)) {
 
@@ -674,10 +675,9 @@ public class SwaggerReader {
             } else {
                 throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
                                 "or a single parameter that has @BodyParam annotation or a single parameter that is RakamHttpRequest class.",
-                        method.getDeclaringClass().getName()+"."+method.getName()));
+                        method.getDeclaringClass().getName() + "." + method.getName()));
             }
-        } else
-        if(explicitType != null) {
+        } else if (explicitType != null) {
             Property property = modelConverters.readAsProperty(explicitType);
             BodyParameter bodyParameter = new BodyParameter();
             bodyParameter.setName(methodIdentifier);
@@ -709,11 +709,11 @@ public class SwaggerReader {
     private static Type getActualType(Class readClass, Type parameterizedType) {
         // if the parameter has a generic type, it will be read as Object
         // so we need to find the actual implementation and return that type.
-        if(parameterizedType instanceof TypeVariableImpl) {
+        if (parameterizedType instanceof TypeVariableImpl) {
             TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
             Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();
             for (int i = 0; i < genericParameters.length; i++) {
-                if(genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
+                if (genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
                     return implementations[i];
                 }
             }
@@ -738,16 +738,14 @@ public class SwaggerReader {
 
         java.lang.reflect.Parameter[] parameters = constructors.get(0).getParameters();
         // TODO fixme all parameters must have @ApiParam
-        if(parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
+        if (parameters.length > 0 && !parameters[0].isAnnotationPresent(ApiParam.class)) {
             throw new IllegalArgumentException(format("%s constructor parameters don't have @ApiParam annotation.",
                     type.getSimpleName()));
         }
 
         Model model = swagger.getDefinitions().get(type.getSimpleName());
-        if(model != null && !type.getName().equals(model.getReference())) {
-            // TODO: it throws an exception in some platforms. Debug when it's produced.
-            LOGGER.error(String.format("Error while reading field of bean %s. The bean doesn't have Swagger definition", type.getName()));
-            return new java.lang.reflect.Parameter[0];
+        if (model == null) {
+            modelConverters.read(type).forEach(swagger::addDefinition);
         }
 
         return parameters;
@@ -759,7 +757,7 @@ public class SwaggerReader {
             Property property = properties.get(i);
             java.lang.reflect.Parameter parameter = parameters[i];
             ApiParam ann = parameter.getAnnotation(ApiParam.class);
-            if(ann == null) {
+            if (ann == null) {
                 continue;
             }
             model.addProperty(ann.name(), property);
