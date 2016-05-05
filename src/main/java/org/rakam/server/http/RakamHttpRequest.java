@@ -36,7 +36,7 @@ public class RakamHttpRequest implements HttpRequest {
     private FullHttpResponse response;
     private Consumer<String> bodyHandler;
     private Set<Cookie> cookies;
-
+    private String body;
     private QueryStringDecoder qs;
     private String remoteAddress;
 
@@ -182,10 +182,15 @@ public class RakamHttpRequest implements HttpRequest {
         }
     }
 
-    void handleBody(String s) {
+    void handleBody(String body) {
+        this.body = body;
         if (bodyHandler != null) {
-            bodyHandler.accept(s);
+            bodyHandler.accept(body);
         }
+    }
+
+    String getBody() {
+        return body;
     }
 
     public StreamResponse streamResponse() {
