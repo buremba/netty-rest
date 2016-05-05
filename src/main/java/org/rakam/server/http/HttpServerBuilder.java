@@ -26,7 +26,7 @@ public class HttpServerBuilder {
     private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
     private boolean proxyProtocol;
     private Builder<PostProcessorEntry> requestPostprocessors = ImmutableList.builder();
-    private Thread.UncaughtExceptionHandler uncaughtExceptionHandler;
+    private ExceptionHandler exceptionHandler;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -103,8 +103,8 @@ public class HttpServerBuilder {
         return this;
     }
 
-    public HttpServerBuilder setUncaughtExceptionHandler(Thread.UncaughtExceptionHandler uncaughtExceptionHandler) {
-        this.uncaughtExceptionHandler = uncaughtExceptionHandler;
+    public HttpServerBuilder setExceptionHandler(ExceptionHandler exceptionHandler) {
+        this.exceptionHandler = exceptionHandler;
         return this;
     }
 
@@ -115,6 +115,10 @@ public class HttpServerBuilder {
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 requestPostprocessors.build(),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings, uncaughtExceptionHandler, debugMode, proxyProtocol);
+                overridenMappings, exceptionHandler, debugMode, proxyProtocol);
+    }
+
+    public interface ExceptionHandler {
+        void handle(RakamHttpRequest request, Throwable e);
     }
 }

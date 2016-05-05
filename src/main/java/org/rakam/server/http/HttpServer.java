@@ -48,7 +48,6 @@ import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.ws.rs.Path;
 import java.io.UnsupportedEncodingException;
-import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -99,7 +98,7 @@ public class HttpServer {
     private final boolean debugMode;
     private final boolean proxyProtocol;
     private final List<PostProcessorEntry> postProcessors;
-    private final UncaughtExceptionHandler uncaughtExceptionHandler;
+    private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -117,7 +116,7 @@ public class HttpServer {
                Swagger swagger, EventLoopGroup eventLoopGroup,
                PreProcessors preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
                ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
-               UncaughtExceptionHandler uncaughtExceptionHandler,
+               HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler,
                boolean debugMode, boolean proxyProtocol) {
         this.routeMatcher = new RouteMatcher(debugMode);
         this.preProcessors = preProcessors;
@@ -481,11 +480,11 @@ public class HttpServer {
             Object apply = function.apply(serviceInstance, json);
             returnJsonResponse(mapper, request, OK, apply, postProcessors);
         } catch (HttpRequestException e) {
-            uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), e);
+            uncaughtExceptionHandler.handle(request, e);
             HttpResponseStatus statusCode = e.getStatusCode();
             returnJsonResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode), postProcessors);
         } catch (Exception e) {
-            uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), e);
+            uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
             returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
@@ -497,11 +496,11 @@ public class HttpServer {
             Object apply = function.apply(serviceInstance);
             returnJsonResponse(mapper, request, OK, apply, postProcessors);
         } catch (HttpRequestException ex) {
-            uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+            uncaughtExceptionHandler.handle(request, ex);
             HttpResponseStatus statusCode = ex.getStatusCode();
             returnJsonResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode), postProcessors);
         } catch (Exception e) {
-            uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), e);
+            uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
             ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
             returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
@@ -546,7 +545,7 @@ public class HttpServer {
                 while (ex instanceof CompletionException) {
                     ex = ex.getCause();
                 }
-                uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+                uncaughtExceptionHandler.handle(request, ex);
 
                 if (ex instanceof HttpRequestException) {
                     HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
@@ -669,7 +668,7 @@ public class HttpServer {
     }
 
     void requestError(Throwable ex, RakamHttpRequest request) {
-        uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+        uncaughtExceptionHandler.handle(request, ex);
 
         if (ex instanceof HttpRequestException) {
             HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
