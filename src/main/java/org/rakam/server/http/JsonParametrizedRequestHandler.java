@@ -39,8 +39,9 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
     }
 
     private final List<ResponsePostProcessor> postProcessors;
+    private final HttpServer httpServer;
 
-    public JsonParametrizedRequestHandler(ObjectMapper mapper,
+    public JsonParametrizedRequestHandler(HttpServer httpServer, ObjectMapper mapper,
                                           List<IRequestParameter> bodyParams,
                                           MethodHandle methodHandle,
                                           List<ResponsePostProcessor> postProcessors,
@@ -49,6 +50,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                                           List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
                                           boolean isAsync) {
         this.mapper = mapper;
+        this.httpServer = httpServer;
         this.bodyParams = bodyParams;
         this.methodHandle = methodHandle;
         this.service = service;
@@ -102,7 +104,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                 }
             }
         } catch (Throwable e) {
-            requestError(e, request);
+            httpServer.requestError(e, request);
             return;
         }
 
@@ -114,7 +116,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
             try {
                 value = param.extract(node, request);
             } catch (Exception e) {
-                requestError(e, request);
+                httpServer.requestError(e, request);
                 return;
             }
             if (param.required() && (value == null || value == NullNode.getInstance())) {
@@ -129,10 +131,10 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         try {
             invoke = methodHandle.invokeWithArguments(values);
         } catch (Throwable e) {
-            requestError(e, request);
+            httpServer.requestError(e, request);
             return;
         }
 
-        handleRequest(mapper, isAsync, invoke, request, postProcessors);
+        httpServer.handleRequest(mapper, isAsync, invoke, request, postProcessors);
     }
 }

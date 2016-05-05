@@ -28,12 +28,14 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final List<RequestPreprocessor<Object>> jsonPreprocessors;
     private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
     private final List<ResponsePostProcessor> postProcessors;
+    private final HttpServer httpServer;
 
-    public JsonBeanRequestHandler(ObjectMapper mapper, Method method,
+    public JsonBeanRequestHandler(HttpServer httpServer, ObjectMapper mapper, Method method,
                                   List<RequestPreprocessor<Object>> jsonPreprocessors,
                                   List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
                                   List<ResponsePostProcessor> postProcessors,
                                   HttpService service) {
+        this.httpServer = httpServer;
         this.mapper = mapper;
         this.service = service;
         this.postProcessors = postProcessors;
@@ -79,7 +81,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                     }
                 }
             } catch (Throwable e) {
-                requestError(e, request);
+                httpServer.requestError(e, request);
                 return;
             }
 
@@ -88,12 +90,12 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 try {
                     apply = (CompletionStage) function.apply(service, json);
                 } catch (Exception e) {
-                    requestError(e, request);
+                    httpServer.requestError(e, request);
                     return;
                 }
-                handleAsyncJsonRequest(mapper, request, apply, postProcessors);
+                httpServer.handleAsyncJsonRequest(mapper, request, apply, postProcessors);
             } else {
-                handleJsonRequest(mapper, service, request, function, json, postProcessors);
+                httpServer.handleJsonRequest(mapper, service, request, function, json, postProcessors);
             }
         });
     }
