@@ -26,9 +26,6 @@ public class MethodHandleTest {
     }
 
     class Foo {
-        public void bar(String myStr, Integer myInt) {
-            System.out.println("Called " + myStr + " " + myInt);
-        }
     }
 
 }

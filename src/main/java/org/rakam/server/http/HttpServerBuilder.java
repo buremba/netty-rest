@@ -26,6 +26,7 @@ public class HttpServerBuilder {
     private Builder<PreprocessorEntry<Object>> jsonBeanRequestPreprocessors = ImmutableList.builder();
     private boolean proxyProtocol;
     private Builder<PostProcessorEntry> requestPostprocessors = ImmutableList.builder();
+    private Thread.UncaughtExceptionHandler uncaughtExceptionHandler;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -34,8 +35,9 @@ public class HttpServerBuilder {
 
     /**
      * Add processor for @JsonRequest methods.
-     * @param preprocessor preprocessor instance that will processs request before the method.
-     * @param predicate applies preprocessor only methods that passes this predicate
+     *
+     * @param preprocessor preprocessor instance that will process request before the method.
+     * @param predicate    applies preprocessor only methods that passes this predicate
      * @return if true, method will not be called.
      */
     public HttpServerBuilder addJsonPreprocessor(RequestPreprocessor<ObjectNode> preprocessor, Predicate<Method> predicate) {
@@ -45,8 +47,9 @@ public class HttpServerBuilder {
 
     /**
      * Add processor for @JsonRequest methods.
+     *
      * @param preprocessor preprocessor instance that will processs request before the method.
-     * @param predicate applies preprocessor only methods that passes this predicate
+     * @param predicate    applies preprocessor only methods that passes this predicate
      * @return if true, method will not be called.
      */
     public HttpServerBuilder addJsonBeanPreprocessor(RequestPreprocessor<Object> preprocessor, Predicate<Method> predicate) {
@@ -89,6 +92,7 @@ public class HttpServerBuilder {
         this.debugMode = debugMode;
         return this;
     }
+
     public HttpServerBuilder setProxyProtocol(boolean proxyProtocol) {
         this.proxyProtocol = proxyProtocol;
         return this;
@@ -99,6 +103,11 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setUncaughtExceptionHandler(Thread.UncaughtExceptionHandler uncaughtExceptionHandler) {
+        this.uncaughtExceptionHandler = uncaughtExceptionHandler;
+        return this;
+    }
+
     public HttpServer build() {
         return new HttpServer(
                 httpServices, websockerServices,
@@ -106,6 +115,6 @@ public class HttpServerBuilder {
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 requestPostprocessors.build(),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings, debugMode, proxyProtocol);
+                overridenMappings, uncaughtExceptionHandler, debugMode, proxyProtocol);
     }
 }

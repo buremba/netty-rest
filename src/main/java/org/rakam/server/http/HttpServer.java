@@ -48,6 +48,7 @@ import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.ws.rs.Path;
 import java.io.UnsupportedEncodingException;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -98,6 +99,7 @@ public class HttpServer {
     private final boolean debugMode;
     private final boolean proxyProtocol;
     private final List<PostProcessorEntry> postProcessors;
+    private final UncaughtExceptionHandler uncaughtExceptionHandler;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -111,18 +113,24 @@ public class HttpServer {
     }
 
 
-    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices, Swagger swagger, EventLoopGroup eventLoopGroup, PreProcessors preProcessors, ImmutableList<PostProcessorEntry> postProcessors, ObjectMapper mapper, Map<Class, PrimitiveType> overridenMappings, boolean debugMode, boolean proxyProtocol) {
+    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices,
+               Swagger swagger, EventLoopGroup eventLoopGroup,
+               PreProcessors preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
+               ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
+               UncaughtExceptionHandler uncaughtExceptionHandler,
+               boolean debugMode, boolean proxyProtocol) {
         this.routeMatcher = new RouteMatcher(debugMode);
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
         this.mapper = mapper;
         this.debugMode = debugMode;
+        this.uncaughtExceptionHandler = uncaughtExceptionHandler == null ? (t, e) -> {} : uncaughtExceptionHandler;
         this.postProcessors = postProcessors;
         this.proxyProtocol = proxyProtocol;
 
         this.bossGroup = Epoll.isAvailable() ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
-        registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overridenMappings);
+        registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overriddenMappings);
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
         routeMatcher.add(HttpMethod.GET, "/api/swagger.json", this::swaggerApiHandle);
     }
@@ -332,7 +340,7 @@ public class HttpServer {
                 .filter(p -> p.test(method)).map(PostProcessorEntry::getProcessor).collect(Collectors.toList());
     }
 
-    static void handleRequest(ObjectMapper mapper, boolean isAsync, Object invoke, RakamHttpRequest request, List<ResponsePostProcessor> postProcessors) {
+    void handleRequest(ObjectMapper mapper, boolean isAsync, Object invoke, RakamHttpRequest request, List<ResponsePostProcessor> postProcessors) {
         if (isAsync) {
             handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke, postProcessors);
         } else {
@@ -477,21 +485,22 @@ public class HttpServer {
             returnJsonResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode), postProcessors);
         } catch (Exception e) {
             LOGGER.error(e, "An uncaught exception raised while processing request.");
-            ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
+            ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
             returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
         }
     }
 
-    static void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function, List<ResponsePostProcessor> postProcessors) {
+     void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function, List<ResponsePostProcessor> postProcessors) {
         try {
             Object apply = function.apply(serviceInstance);
             returnJsonResponse(mapper, request, OK, apply, postProcessors);
-        } catch (HttpRequestException e) {
-            HttpResponseStatus statusCode = e.getStatusCode();
-            returnJsonResponse(mapper, request, statusCode, errorMessage(e.getMessage(), statusCode), postProcessors);
+        } catch (HttpRequestException ex) {
+            uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+            HttpResponseStatus statusCode = ex.getStatusCode();
+            returnJsonResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode), postProcessors);
         } catch (Exception e) {
             LOGGER.error(e, "An uncaught exception raised while processing request.");
-            ObjectNode errorMessage = errorMessage("error processing request.", INTERNAL_SERVER_ERROR);
+            ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
             returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
         }
     }
@@ -528,9 +537,11 @@ public class HttpServer {
         }
     }
 
-    static void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply, List<ResponsePostProcessor> postProcessors) {
+    void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply, List<ResponsePostProcessor> postProcessors) {
         apply.whenComplete((BiConsumer<Object, Throwable>) (result, ex) -> {
             if (ex != null) {
+                uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+
                 while (ex instanceof CompletionException) {
                     ex = ex.getCause();
                 }
@@ -632,7 +643,7 @@ public class HttpServer {
         }
     }
 
-    public static void returnError(RakamHttpRequest request, String message, HttpResponseStatus statusCode) {
+    public  void returnError(RakamHttpRequest request, String message, HttpResponseStatus statusCode) {
         ObjectNode obj = DEFAULT_MAPPER.createObjectNode()
                 .put("error", message)
                 .put("error_code", statusCode.code());
@@ -644,7 +655,7 @@ public class HttpServer {
             throw new RuntimeException();
         }
         request.response(bytes, statusCode)
-                .headers().set("Content-Type", "application/json; charset=utf-8");
+                .headers().set("Content-Type", "application/json");
         request.end();
     }
 
@@ -654,13 +665,15 @@ public class HttpServer {
                 .put("error_code", statusCode.code());
     }
 
-    static void requestError(Throwable ex, RakamHttpRequest request) {
+    void requestError(Throwable ex, RakamHttpRequest request) {
+        uncaughtExceptionHandler.uncaughtException(Thread.currentThread(), ex);
+
         if (ex instanceof HttpRequestException) {
             HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
             returnError(request, ex.getMessage(), statusCode);
         } else {
             LOGGER.error(ex, "An uncaught exception raised while processing request.");
-            returnError(request, "error processing request: " + ex.getMessage(), INTERNAL_SERVER_ERROR);
+            returnError(request, "Error processing request.", INTERNAL_SERVER_ERROR);
         }
     }
 
