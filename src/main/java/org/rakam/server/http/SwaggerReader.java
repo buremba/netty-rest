@@ -485,13 +485,14 @@ public class SwaggerReader {
         if (nickname.isEmpty()) {
             nickname = method.getDeclaringClass().getName().replace(".", "_");
         }
-        String methodIdentifier = nickname + "_" + method.getName().substring(0, 1).toUpperCase() + method.getName().substring(1);
+        String methodName = method.getName().substring(0, 1).toUpperCase() + method.getName().substring(1);
+        String methodIdentifier = nickname + "_" + methodName;
 
         if (apiOperation != null) {
             if (apiOperation.hidden())
                 return null;
 
-            operation.operationId(methodIdentifier);
+            operation.operationId(methodName);
 
             defaultResponseHeaders = parseResponseHeaders(apiOperation.responseHeaders());
 
