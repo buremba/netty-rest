@@ -65,6 +65,7 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -178,7 +179,6 @@ public class HttpServer {
         SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerBeanMappings);
 
         httpServicePlugins.forEach(service -> {
-
             reader.read(service.getClass());
             if (!service.getClass().isAnnotationPresent(Path.class)) {
                 throw new IllegalStateException(format("HttpService class %s must have javax.ws.rs.Path annotation", service.getClass()));
@@ -236,6 +236,10 @@ public class HttpServer {
                 }
             }
         });
+
+       swagger.getDefinitions().forEach((k, v) -> Optional.ofNullable(v)
+               .map(a -> a.getProperties())
+               .ifPresent(a -> a.values().forEach(x -> x.setReadOnly(null))));
     }
 
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
