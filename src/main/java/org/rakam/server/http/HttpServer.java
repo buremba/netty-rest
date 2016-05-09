@@ -298,7 +298,7 @@ public class HttpServer {
             return new JsonParametrizedRequestHandler(this, mapper, bodyParams,
                     methodHandle, postProcessors, service,
                     preprocessorForJsonRequest,
-                    preprocessorRequest, isAsync, !method.getReturnType().equals(Void.class));
+                    preprocessorRequest, isAsync, !method.getReturnType().equals(void.class));
         }
     }
 
