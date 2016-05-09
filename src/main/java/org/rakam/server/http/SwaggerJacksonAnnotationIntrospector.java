@@ -19,8 +19,8 @@ public class SwaggerJacksonAnnotationIntrospector extends AnnotationIntrospector
     @Override
     public String findImplicitPropertyName(AnnotatedMember member) {
         ApiParam annotation = member.getAnnotation(ApiParam.class);
-        if (annotation != null && annotation.name() != "") {
-            return annotation.name();
+        if (annotation != null && annotation.value() != "") {
+            return annotation.value();
         } else {
             return super.findImplicitPropertyName(member);
         }

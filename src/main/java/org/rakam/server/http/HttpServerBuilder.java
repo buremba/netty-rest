@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.swagger.models.Swagger;
 import io.swagger.util.PrimitiveType;
 
@@ -27,6 +30,7 @@ public class HttpServerBuilder {
     private boolean proxyProtocol;
     private Builder<PostProcessorEntry> requestPostprocessors = ImmutableList.builder();
     private ExceptionHandler exceptionHandler;
+    private Map<String, IRequestParameterFactory> customRequestParameters;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -108,17 +112,38 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setCustomRequestParameters(Map<String, IRequestParameterFactory> customRequestParameters) {
+        this.customRequestParameters = customRequestParameters;
+        return this;
+    }
+
     public HttpServer build() {
+        if (eventLoopGroup == null) {
+            eventLoopGroup = new NioEventLoopGroup();
+        }
+        if (swagger == null) {
+            swagger = new Swagger();
+        }
+        if (websockerServices == null) {
+            websockerServices = ImmutableSet.of();
+        }
+        if (customRequestParameters == null) {
+            customRequestParameters = ImmutableMap.of();
+        }
         return new HttpServer(
                 httpServices, websockerServices,
                 swagger, eventLoopGroup,
                 new PreProcessors(requestPreprocessors.build(), jsonRequestPreprocessors.build(), jsonBeanRequestPreprocessors.build()),
                 requestPostprocessors.build(),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings, exceptionHandler, debugMode, proxyProtocol);
+                overridenMappings, exceptionHandler, customRequestParameters, debugMode, proxyProtocol);
     }
 
     public interface ExceptionHandler {
         void handle(RakamHttpRequest request, Throwable e);
+    }
+
+    public interface IRequestParameterFactory {
+        IRequestParameter create(Method method);
     }
 }

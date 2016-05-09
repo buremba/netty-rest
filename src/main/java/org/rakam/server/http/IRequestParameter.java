@@ -1,23 +1,21 @@
 package org.rakam.server.http;
 
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.handler.codec.http.cookie.Cookie;
 
 import java.lang.reflect.Type;
 
-public interface IRequestParameter {
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
-    <T> T extract(ObjectNode node, RakamHttpRequest request);
+public interface IRequestParameter<T> {
 
-    boolean required();
+    T extract(ObjectNode node, RakamHttpRequest request);
 
-    String name();
-
-    String in();
-
-    class HeaderParameter implements IRequestParameter {
+    class HeaderParameter implements IRequestParameter<String> {
         public final String name;
         public final boolean required;
 
@@ -27,27 +25,12 @@ public interface IRequestParameter {
         }
 
         @Override
-        public <T> T extract(ObjectNode node, RakamHttpRequest request) {
-            return (T) request.headers().get(name);
-        }
-
-        @Override
-        public boolean required() {
-            return required;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public String in() {
-            return "header";
+        public String extract(ObjectNode node, RakamHttpRequest request) {
+            return request.headers().get(name);
         }
     }
 
-    class CookieParameter implements IRequestParameter {
+    class CookieParameter implements IRequestParameter<String> {
         public final String name;
         public final boolean required;
 
@@ -57,66 +40,58 @@ public interface IRequestParameter {
         }
 
         @Override
-        public <T> T extract(ObjectNode node, RakamHttpRequest request) {
+        public String extract(ObjectNode node, RakamHttpRequest request) {
             for (Cookie cookie : request.cookies()) {
-                if(name.equals(cookie.name())) {
+                if (name.equals(cookie.name())) {
                     // TODO fixme: the value of cookie parameter always must be String.
-                    return (T) cookie.value();
+                    return cookie.value();
                 }
             }
             return null;
-        }
-
-        @Override
-        public boolean required() {
-            return required;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public String in() {
-            return "cookie";
         }
     }
 
     class BodyParameter implements IRequestParameter {
         public final String name;
-        public final Type type;
+        public final JavaType type;
         public final boolean required;
         private final ObjectMapper mapper;
 
         BodyParameter(ObjectMapper mapper, String name, Type type, boolean required) {
             this.name = name;
-            this.type = type;
+            this.type = mapper.constructType(type);
             this.mapper = mapper;
             this.required = required;
         }
 
-        public <T> T extract(ObjectNode node, RakamHttpRequest request) {
+        public Object extract(ObjectNode node, RakamHttpRequest request) {
             JsonNode value = node.get(name);
+            Object o;
             if (value == null) {
-                return null;
+                o = null;
+            } else {
+                o = mapper.convertValue(value, type);
             }
-            return mapper.convertValue(value, mapper.constructType(type));
+
+            if (required && (o == null || o == NullNode.getInstance())) {
+                throw new HttpRequestException(name + " body parameter is required", BAD_REQUEST);
+            }
+
+            return o;
+        }
+    }
+
+    class FullBodyParameter implements IRequestParameter {
+        public final JavaType type;
+        private final ObjectMapper mapper;
+
+        FullBodyParameter(ObjectMapper mapper, Type type) {
+            this.type = mapper.constructType(type);
+            this.mapper = mapper;
         }
 
-        @Override
-        public boolean required() {
-            return required;
-        }
-
-        @Override
-        public String name() {
-            return name;
-        }
-
-        @Override
-        public String in() {
-            return "body";
+        public Object extract(ObjectNode node, RakamHttpRequest request) {
+            return mapper.convertValue(node, type);
         }
     }
 }

@@ -17,18 +17,18 @@ import java.util.function.BiFunction;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static java.lang.String.format;
-import static org.rakam.server.http.HttpServer.*;
+import static org.rakam.server.http.HttpServer.returnError;
 
 public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final ObjectMapper mapper;
     private final JavaType jsonClazz;
     private final boolean isAsync;
-    private final BiFunction<HttpService, Object, Object> function;
     private final HttpService service;
     private final List<RequestPreprocessor<Object>> jsonPreprocessors;
     private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
     private final List<ResponsePostProcessor> postProcessors;
     private final HttpServer httpServer;
+    private final BiFunction function;
 
     public JsonBeanRequestHandler(HttpServer httpServer, ObjectMapper mapper, Method method,
                                   List<RequestPreprocessor<Object>> jsonPreprocessors,
@@ -41,6 +41,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
         this.postProcessors = postProcessors;
 
         function = Lambda.produceLambdaForBiFunction(method);
+
         isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
         jsonClazz = mapper.constructType(method.getParameters()[0].getParameterizedType());
 
@@ -89,13 +90,13 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 CompletionStage apply;
                 try {
                     apply = (CompletionStage) function.apply(service, json);
-                } catch (Exception e) {
+                } catch (Throwable e) {
                     httpServer.requestError(e, request);
                     return;
                 }
                 httpServer.handleAsyncJsonRequest(mapper, request, apply, postProcessors);
             } else {
-                httpServer.handleJsonRequest(mapper, service, request, function, json, postProcessors);
+                httpServer.handleJsonRequest(mapper, service, request, (service) -> function.apply(service, json), postProcessors);
             }
         });
     }

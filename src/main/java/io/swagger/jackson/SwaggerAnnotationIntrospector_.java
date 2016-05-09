@@ -69,8 +69,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     @Override
     public PropertyName findNameForSerialization(Annotated a) {
         ApiParam model = a.getAnnotation(ApiParam.class);
-        if (model != null && !"".equals(model.name())) {
-            return new PropertyName(model.name());
+        if (model != null && !"".equals(model.value())) {
+            return new PropertyName(model.value());
         }
         return null;
     }
@@ -78,8 +78,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     @Override
     public PropertyName findNameForDeserialization(Annotated a) {
         ApiParam model = a.getAnnotation(ApiParam.class);
-        if (model != null && !"".equals(model.name())) {
-            return new PropertyName(model.name());
+        if (model != null && !"".equals(model.value())) {
+            return new PropertyName(model.value());
         }
         return null;
     }

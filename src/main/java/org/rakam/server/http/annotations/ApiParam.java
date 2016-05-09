@@ -29,10 +29,10 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.RUNTIME)
 public @interface ApiParam {
   /** Name of the parameter */
-  String name() default "";
+  String value() default "";
 
   /** Description of the parameter */
-  String value() default "";
+  String description() default "";
 
   /** Default value  - if e.g. no JAX-RS @DefaultValue is given */
   String defaultValue() default "";

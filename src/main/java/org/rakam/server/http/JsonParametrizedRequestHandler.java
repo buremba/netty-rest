@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
-import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 
@@ -40,6 +39,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
 
     private final List<ResponsePostProcessor> postProcessors;
     private final HttpServer httpServer;
+    private final boolean isJson;
 
     public JsonParametrizedRequestHandler(HttpServer httpServer, ObjectMapper mapper,
                                           List<IRequestParameter> bodyParams,
@@ -48,7 +48,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                                           HttpService service,
                                           List<RequestPreprocessor<ObjectNode>> jsonPreprocessors,
                                           List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
-                                          boolean isAsync) {
+                                          boolean isAsync, boolean isJson) {
         this.mapper = mapper;
         this.httpServer = httpServer;
         this.bodyParams = bodyParams;
@@ -57,8 +57,9 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         this.postProcessors = postProcessors;
         this.isAsync = isAsync;
         this.jsonPreprocessors = jsonPreprocessors;
+        this.isJson = isJson;
         this.requestPreprocessors = requestPreprocessors;
-        this.bodyExtractionRequired = bodyParams.stream().anyMatch(a -> a.in().equals("body"));
+        this.bodyExtractionRequired = bodyParams.stream().anyMatch(a -> a instanceof IRequestParameter.BodyParameter || a instanceof IRequestParameter.FullBodyParameter);
     }
 
     @Override
@@ -119,10 +120,6 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                 httpServer.requestError(e, request);
                 return;
             }
-            if (param.required() && (value == null || value == NullNode.getInstance())) {
-                returnError(request, param.name() + " " + param.in() + " parameter is required", BAD_REQUEST);
-                return;
-            }
 
             values[i + 1] = value;
         }
@@ -135,6 +132,8 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
             return;
         }
 
-        httpServer.handleRequest(mapper, isAsync, invoke, request, postProcessors);
+        if(isJson) {
+            httpServer.handleRequest(mapper, isAsync, invoke, request, postProcessors);
+        }
     }
 }

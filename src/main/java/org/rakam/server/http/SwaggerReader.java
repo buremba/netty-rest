@@ -42,7 +42,7 @@ import org.rakam.server.http.annotations.ApiResponses;
 import org.rakam.server.http.annotations.Authorization;
 import org.rakam.server.http.annotations.IgnoreApi;
 import org.rakam.server.http.annotations.JsonRequest;
-import org.rakam.server.http.annotations.ParamBody;
+import org.rakam.server.http.annotations.BodyParam;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -633,8 +633,10 @@ public class SwaggerReader {
                 name = clazz.getSimpleName();
                 reference = clazz.getName();
             }
-        } else if (method.getParameterCount() == 1 && method.getParameters()[0].getAnnotation(ParamBody.class) != null) {
-            Class type = method.getParameters()[0].getType();
+        } else if (Arrays.stream(method.getParameters()).anyMatch(p -> p.isAnnotationPresent(BodyParam.class))) {
+            Class type = Arrays.stream(method.getParameters())
+                    .filter(p -> p.isAnnotationPresent(BodyParam.class))
+                    .findAny().get().getType();
 
             if (modelConverters.readAsProperty(method.getParameters()[0].getParameterizedType()) instanceof ArrayProperty) {
                 explicitType = type;
@@ -653,13 +655,16 @@ public class SwaggerReader {
         }
 
         if (parameters != null && parameters.length > 0) {
-            java.lang.reflect.Parameter firstParameter = parameters[0];
-            if (firstParameter.isAnnotationPresent(ApiParam.class)) {
+            if (Arrays.stream(parameters).anyMatch(p -> p.isAnnotationPresent(ApiParam.class))) {
 
                 List<String> params = Arrays.asList("string", "number", "integer", "boolean");
+                parameters = Arrays.stream(parameters).filter(p -> p.isAnnotationPresent(ApiParam.class)).toArray(java.lang.reflect.Parameter[]::new);
 
-                List<Property> properties = Arrays.stream(parameters).map(parameter ->
-                        modelConverters.readAsProperty(getActualType(readClass, parameter.getParameterizedType()))).collect(Collectors.toList());
+                List<Property> properties = Arrays.stream(parameters)
+                        .map(parameter ->
+                                modelConverters.readAsProperty(getActualType(readClass, parameter.getParameterizedType())))
+                        .collect(Collectors.toList());
+
 
                 boolean isSchema = properties.stream().anyMatch(property -> params.indexOf(property.getType()) == -1 &&
                         !((property instanceof ArrayProperty) && params.indexOf(((ArrayProperty) property).getItems().getType()) > -1));
@@ -671,12 +676,13 @@ public class SwaggerReader {
                     list = readMethodParameters(parameters, properties, name, reference);
                 }
                 operation.setParameters(list);
-            } else if (firstParameter.getType().equals(RakamHttpRequest.class)) {
+            } else if (method.isAnnotationPresent(ApiImplicitParams.class)) {
                 readImplicitParameters(method, operation);
             } else {
-                throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
-                                "or a single parameter that has @BodyParam annotation or a single parameter that is RakamHttpRequest class.",
-                        method.getDeclaringClass().getName() + "." + method.getName()));
+                operation.setParameters(ImmutableList.of());
+//                throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
+//                                "or a single parameter that has @BodyParam annotation or a single parameter that is RakamHttpRequest class.",
+//                        method.getDeclaringClass().getName() + "." + method.getName()));
             }
         } else if (explicitType != null) {
             Property property = modelConverters.readAsProperty(explicitType);
@@ -761,7 +767,7 @@ public class SwaggerReader {
             if (ann == null) {
                 continue;
             }
-            model.addProperty(ann.name(), property);
+            model.addProperty(ann.value(), property);
             if (property instanceof RefProperty) {
                 Map<String, Model> subProperty = modelConverters.read(parameter.getParameterizedType());
                 String simpleRef = ((RefProperty) property).getSimpleRef();
@@ -805,7 +811,7 @@ public class SwaggerReader {
             FormParameter formParameter = new FormParameter();
 
             formParameter.setRequired(property.getRequired());
-            formParameter.setName(ann.name());
+            formParameter.setName(ann.value());
             formParameter.setDescription(property.getDescription());
             formParameter.setDefaultValue(property.getExample());
 
@@ -863,7 +869,7 @@ public class SwaggerReader {
         for (Annotation annotation : annotations) {
             if (annotation instanceof ApiParam) {
                 FormParameter qp = new FormParameter()
-                        .name(((ApiParam) annotation).name());
+                        .name(((ApiParam) annotation).value());
                 qp.setDefaultValue(defaultValue);
                 Property schema = modelConverters.readAsProperty(type);
                 if (schema != null) {
@@ -935,8 +941,8 @@ public class SwaggerReader {
 
             if (parameter != null) {
                 parameter.setRequired(param.required());
-                if (param.name() != null && !"".equals(param.name()))
-                    parameter.setName(param.name());
+                if (param.value() != null && !"".equals(param.value()))
+                    parameter.setName(param.value());
                 parameter.setDescription(param.value());
                 parameter.setAccess(param.access());
                 allowableValues = param.allowableValues();
@@ -961,8 +967,8 @@ public class SwaggerReader {
             } else if (shouldIgnore == false) {
                 // must be a body param
                 BodyParameter bp = new BodyParameter();
-                if (param.name() != null && !"".equals(param.name()))
-                    bp.setName(param.name());
+                if (param.value() != null && !"".equals(param.value()))
+                    bp.setName(param.value());
                 else
                     bp.setName("body");
                 bp.setDescription(param.value());
