@@ -45,7 +45,7 @@ public class RouteMatcher {
     public void handle(RakamHttpRequest request) {
         String path = cleanPath(request.path());
         int lastIndex = path.length() - 1;
-        if(lastIndex >= 0 && path.charAt(lastIndex) == '/')
+        if(lastIndex > 0 && path.charAt(lastIndex) == '/')
             path = path.substring(0, lastIndex);
         // TODO: Make it optional
         if(request.getMethod() == HttpMethod.OPTIONS) {
