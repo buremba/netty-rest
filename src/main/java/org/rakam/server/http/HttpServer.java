@@ -231,7 +231,7 @@ public class HttpServer {
                             handler = getJsonRequestHandler(method, service);
                         }
 
-                        microRouteMatcher.add(lastPath.equals("/") ? "" : lastPath, httpMethod, handler);
+                        microRouteMatcher.add(lastPath, httpMethod, handler);
                     }
                 }
             }
@@ -471,7 +471,7 @@ public class HttpServer {
             return new HeaderParameter(param.value(), param.required());
         } else if (parameter.isAnnotationPresent(CookieParam.class)) {
             CookieParam param = parameter.getAnnotation(CookieParam.class);
-            return new IRequestParameter.CookieParameter(param.name(), param.required());
+            return new IRequestParameter.CookieParameter(param.value(), param.required());
         } else if (parameter.isAnnotationPresent(Named.class)) {
             Named param = parameter.getAnnotation(Named.class);
             IRequestParameterFactory iRequestParameter = customParameters.get(param.value());

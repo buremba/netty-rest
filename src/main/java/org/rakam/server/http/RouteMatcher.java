@@ -140,6 +140,7 @@ public class RouteMatcher {
             result = 31 * result + pattern.hashCode();
             return result;
         }
+
     }
 
     public static class MicroRouteMatcher {

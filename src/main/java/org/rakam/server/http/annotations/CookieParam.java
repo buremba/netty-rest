@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 @Target({ElementType.PARAMETER, ElementType.METHOD, ElementType.FIELD})
 @Retention(RetentionPolicy.RUNTIME)
 public @interface CookieParam {
-    String name();
+    String value();
     boolean required() default true;
     String requiredMessage() default "";
 }
