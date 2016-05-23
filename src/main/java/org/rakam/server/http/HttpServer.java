@@ -98,7 +98,7 @@ public class HttpServer {
     private final ObjectMapper mapper;
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
-    private final PreProcessors preProcessors;
+    private final List<PreprocessorEntry> preProcessors;
     private final boolean debugMode;
     private final boolean proxyProtocol;
     private final List<PostProcessorEntry> postProcessors;
@@ -119,7 +119,7 @@ public class HttpServer {
 
     HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices,
                Swagger swagger, EventLoopGroup eventLoopGroup,
-               PreProcessors preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
+               List<PreprocessorEntry> preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
                ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
                HttpServerBuilder.ExceptionHandler exceptionHandler, Map<String, IRequestParameterFactory> customParameters,
                boolean debugMode, boolean proxyProtocol) {
@@ -224,8 +224,7 @@ public class HttpServer {
                         HttpRequestHandler handler;
                         if (httpMethod == GET && !method.getReturnType().equals(void.class)) {
                             handler = createGetRequestHandler(service, method);
-                        } else
-                        if(isRawRequestMethod(method)) {
+                        } else if (isRawRequestMethod(method)) {
                             handler = generateRawRequestHandler(service, method);
                         } else {
                             handler = getJsonRequestHandler(method, service);
@@ -237,19 +236,18 @@ public class HttpServer {
             }
         });
 
-       swagger.getDefinitions().forEach((k, v) -> Optional.ofNullable(v)
-               .map(a -> a.getProperties())
-               .ifPresent(a -> a.values().forEach(x -> x.setReadOnly(null))));
+        swagger.getDefinitions().forEach((k, v) -> Optional.ofNullable(v)
+                .map(a -> a.getProperties())
+                .ifPresent(a -> a.values().forEach(x -> x.setReadOnly(null))));
     }
 
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service) {
-        final List<RequestPreprocessor<RakamHttpRequest>> preprocessorRequest = getPreprocessorRequest(method);
+        final List<RequestPreprocessor> preprocessorRequest = getPreprocessorRequest(method);
         List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         if (method.getParameterCount() == 1 && method.getParameters()[0].isAnnotationPresent(BodyParam.class)) {
             return new JsonBeanRequestHandler(this, mapper, method,
-                    getPreprocessorForJsonBeanRequest(method),
-                    preprocessorRequest, postProcessors,
+                    getPreprocessorRequest(method), postProcessors,
                     service);
         }
 
@@ -260,7 +258,7 @@ public class HttpServer {
 
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
 
-        final List<RequestPreprocessor<ObjectNode>> preprocessorForJsonRequest = getPreprocessorForJsonRequest(method);
+        final List<RequestPreprocessor> preprocessorForJsonRequest = getPreprocessorRequest(method);
 
         if (bodyParams.size() == 0) {
             final ObjectNode emptyNode = mapper.createObjectNode();
@@ -269,8 +267,8 @@ public class HttpServer {
                 Object invoke;
                 try {
                     if (!preprocessorForJsonRequest.isEmpty()) {
-                        for (RequestPreprocessor<ObjectNode> preprocessor : preprocessorForJsonRequest) {
-                            preprocessor.handle(request.headers(), emptyNode);
+                        for (RequestPreprocessor preprocessor : preprocessorForJsonRequest) {
+                            preprocessor.handle(request, emptyNode);
                         }
                     }
 
@@ -297,8 +295,7 @@ public class HttpServer {
 
             return new JsonParametrizedRequestHandler(this, mapper, bodyParams,
                     methodHandle, postProcessors, service,
-                    preprocessorForJsonRequest,
-                    preprocessorRequest, isAsync, !method.getReturnType().equals(void.class));
+                    preprocessorForJsonRequest, isAsync, !method.getReturnType().equals(void.class));
         }
     }
 
@@ -317,18 +314,8 @@ public class HttpServer {
         return parameterizedType;
     }
 
-    private List<RequestPreprocessor<ObjectNode>> getPreprocessorForJsonRequest(Method method) {
-        return preProcessors.jsonRequestPreprocessors.stream()
-                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
-    }
-
-    private List<RequestPreprocessor<Object>> getPreprocessorForJsonBeanRequest(Method method) {
-        return preProcessors.jsonBeanRequestPreprocessors.stream()
-                .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
-    }
-
-    private List<RequestPreprocessor<RakamHttpRequest>> getPreprocessorRequest(Method method) {
-        return preProcessors.requestPreprocessors.stream()
+    private List<RequestPreprocessor> getPreprocessorRequest(Method method) {
+        return preProcessors.stream()
                 .filter(p -> p.test(method)).map(p -> p.getPreprocessor()).collect(Collectors.toList());
     }
 
@@ -352,7 +339,7 @@ public class HttpServer {
     }
 
     private HttpRequestHandler generateRawRequestHandler(HttpService service, Method method) {
-        List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors = getPreprocessorRequest(method);
+        List<RequestPreprocessor> requestPreprocessors = getPreprocessorRequest(method);
 
         // we don't need to pass service object is the method is static.
         // it's also better for performance since there will be only one object to send the stack.
@@ -386,7 +373,7 @@ public class HttpServer {
     private HttpRequestHandler createGetRequestHandler(HttpService service, Method method) {
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
 
-        final List<RequestPreprocessor<RakamHttpRequest>> preprocessors = getPreprocessorRequest(method);
+        final List<RequestPreprocessor> preprocessors = getPreprocessorRequest(method);
         List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         if (method.getParameterCount() == 0) {
@@ -461,6 +448,13 @@ public class HttpServer {
         }
     }
 
+    private static final ImmutableMap<Class<?>, Function<String, ?>> primitiveMapper = ImmutableMap.<Class<?>, Function<String, ?>>of(
+            int.class, Integer::parseInt,
+            long.class, Long::parseLong,
+            double.class, Double::parseDouble,
+            boolean.class, Boolean::parseBoolean,
+            float.class, Float::parseFloat);
+
     IRequestParameter getHandler(Parameter parameter, HttpService service, Method method) {
         if (parameter.isAnnotationPresent(ApiParam.class)) {
             ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
@@ -468,7 +462,14 @@ public class HttpServer {
                     apiParam == null ? false : apiParam.required());
         } else if (parameter.isAnnotationPresent(HeaderParam.class)) {
             HeaderParam param = parameter.getAnnotation(HeaderParam.class);
-            return new HeaderParameter(param.value(), param.required());
+            Type actualType = getActualType(service.getClass(), parameter.getParameterizedType());
+            if (actualType.equals(String.class) || (actualType instanceof Class && primitiveMapper.containsKey(actualType))) {
+                return new HeaderParameter(param.value(), param.required(),
+                        actualType.equals(String.class) ? (Function) Function.identity() : primitiveMapper.get(actualType));
+            } else {
+                throw new IllegalArgumentException(String.format("Invalid HeaderParameter type: %s. Header parameters can only be String or primitive types", actualType));
+            }
+
         } else if (parameter.isAnnotationPresent(CookieParam.class)) {
             CookieParam param = parameter.getAnnotation(CookieParam.class);
             return new IRequestParameter.CookieParameter(param.value(), param.required());
@@ -482,7 +483,7 @@ public class HttpServer {
             return iRequestParameter.create(method);
         } else if (parameter.getType().equals(RakamHttpRequest.class)) {
             return (node, request) -> request;
-        }else if (parameter.isAnnotationPresent(BodyParam.class)) {
+        } else if (parameter.isAnnotationPresent(BodyParam.class)) {
             return new IRequestParameter.FullBodyParameter(mapper, parameter.getParameterizedType());
         } else {
             return new BodyParameter(mapper, parameter.getName(), parameter.getParameterizedType(), false);
@@ -664,9 +665,9 @@ public class HttpServer {
         workerGroup.shutdownGracefully();
     }
 
-    static void applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor<RakamHttpRequest>> preprocessors) {
-        for (RequestPreprocessor<RakamHttpRequest> preprocessor : preprocessors) {
-            preprocessor.handle(request.headers(), request);
+    static void applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor> preprocessors) {
+        for (RequestPreprocessor preprocessor : preprocessors) {
+            preprocessor.handle(request, null);
         }
     }
 

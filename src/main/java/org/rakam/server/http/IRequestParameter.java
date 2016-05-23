@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.handler.codec.http.cookie.Cookie;
 
 import java.lang.reflect.Type;
+import java.util.function.Function;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
@@ -15,18 +16,25 @@ public interface IRequestParameter<T> {
 
     T extract(ObjectNode node, RakamHttpRequest request);
 
-    class HeaderParameter implements IRequestParameter<String> {
+    class HeaderParameter<T> implements IRequestParameter {
         public final String name;
         public final boolean required;
+        private final Function<String, T> mapper;
 
-        HeaderParameter(String name, boolean required) {
+        HeaderParameter(String name, boolean required, Function<String, T> mapper) {
             this.name = name;
             this.required = required;
+            this.mapper = mapper;
         }
 
         @Override
-        public String extract(ObjectNode node, RakamHttpRequest request) {
-            return request.headers().get(name);
+        public T extract(ObjectNode node, RakamHttpRequest request) {
+            String value = request.headers().get(name);
+            if (value == null && required) {
+                throw new HttpRequestException("'" + name + "' header parameter is required.", BAD_REQUEST);
+            }
+
+            return mapper.apply(value);
         }
     }
 

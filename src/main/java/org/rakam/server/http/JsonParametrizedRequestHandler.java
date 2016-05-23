@@ -23,8 +23,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
     private final MethodHandle methodHandle;
     private final HttpService service;
     private final boolean isAsync;
-    private final List<RequestPreprocessor<ObjectNode>> jsonPreprocessors;
-    private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
+    private final List<RequestPreprocessor> jsonPreprocessors;
     private final boolean bodyExtractionRequired;
 
     static final String bodyError;
@@ -46,8 +45,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                                           MethodHandle methodHandle,
                                           List<ResponsePostProcessor> postProcessors,
                                           HttpService service,
-                                          List<RequestPreprocessor<ObjectNode>> jsonPreprocessors,
-                                          List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
+                                          List<RequestPreprocessor> jsonPreprocessors,
                                           boolean isAsync, boolean isJson) {
         this.mapper = mapper;
         this.httpServer = httpServer;
@@ -58,7 +56,6 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         this.isAsync = isAsync;
         this.jsonPreprocessors = jsonPreprocessors;
         this.isJson = isJson;
-        this.requestPreprocessors = requestPreprocessors;
         this.bodyExtractionRequired = bodyParams.stream().anyMatch(a -> a instanceof IRequestParameter.BodyParameter || a instanceof IRequestParameter.FullBodyParameter);
     }
 
@@ -100,8 +97,8 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
     private void handleInternal(RakamHttpRequest request, ObjectNode node) {
         try {
             if(!jsonPreprocessors.isEmpty()) {
-                for (RequestPreprocessor<ObjectNode> preprocessor : jsonPreprocessors) {
-                    preprocessor.handle(request.headers(), node);
+                for (RequestPreprocessor preprocessor : jsonPreprocessors) {
+                    preprocessor.handle(request, node);
                 }
             }
         } catch (Throwable e) {

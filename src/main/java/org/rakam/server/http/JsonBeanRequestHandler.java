@@ -24,15 +24,13 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final JavaType jsonClazz;
     private final boolean isAsync;
     private final HttpService service;
-    private final List<RequestPreprocessor<Object>> jsonPreprocessors;
-    private final List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors;
+    private final List<RequestPreprocessor> requestPreprocessors;
     private final List<ResponsePostProcessor> postProcessors;
     private final HttpServer httpServer;
     private final BiFunction function;
 
     public JsonBeanRequestHandler(HttpServer httpServer, ObjectMapper mapper, Method method,
-                                  List<RequestPreprocessor<Object>> jsonPreprocessors,
-                                  List<RequestPreprocessor<RakamHttpRequest>> requestPreprocessors,
+                                  List<RequestPreprocessor> requestPreprocessors,
                                   List<ResponsePostProcessor> postProcessors,
                                   HttpService service) {
         this.httpServer = httpServer;
@@ -45,7 +43,6 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
         isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
         jsonClazz = mapper.constructType(method.getParameters()[0].getParameterizedType());
 
-        this.jsonPreprocessors = jsonPreprocessors;
         this.requestPreprocessors = requestPreprocessors;
     }
 
@@ -76,9 +73,9 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
             }
 
             try {
-                if(!jsonPreprocessors.isEmpty()) {
-                    for (RequestPreprocessor<Object> preprocessor : jsonPreprocessors) {
-                        preprocessor.handle(request.headers(), json);
+                if(!requestPreprocessors.isEmpty()) {
+                    for (RequestPreprocessor preprocessor : requestPreprocessors) {
+                        preprocessor.handle(request, null);
                     }
                 }
             } catch (Throwable e) {

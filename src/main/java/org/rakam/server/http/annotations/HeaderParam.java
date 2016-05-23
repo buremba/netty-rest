@@ -10,5 +10,4 @@ import java.lang.annotation.Target;
 public @interface HeaderParam {
     String value();
     boolean required() default true;
-    String requiredMessage() default "";
 }

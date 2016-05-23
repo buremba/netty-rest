@@ -1,7 +1,7 @@
 package org.rakam.server.http;
 
-import io.netty.handler.codec.http.HttpHeaders;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
-public interface RequestPreprocessor<T> {
-    void handle(HttpHeaders headers, T bodyData);
+public interface RequestPreprocessor {
+    void handle(RakamHttpRequest request, ObjectNode bodyData);
 }
