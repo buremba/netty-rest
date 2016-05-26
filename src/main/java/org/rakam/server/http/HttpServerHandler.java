@@ -43,21 +43,25 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
         }else
         if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
-            if (chunk.content().isReadable()) {
-                String s = chunk.content().toString(CharsetUtil.UTF_8);
-                if (body == null || body.length() == 0) {
-                    request.handleBody(s);
+            try {
+                if (chunk.content().isReadable()) {
+                    String s = chunk.content().toString(CharsetUtil.UTF_8);
+                    if (body == null || body.length() == 0) {
+                        request.handleBody(s);
+                    } else {
+                        body.append(s);
+                        request.handleBody(body.toString());
+                    }
+                    body.delete(0, body.length());
+                    chunk.release();
                 } else {
-                    body.append(s);
-                    request.handleBody(body.toString());
+                    // even if body content is empty, call request.handleBody method.
+                    if (request.getBodyHandler()!=null) {
+                        request.handleBody(EMPTY_BODY);
+                    }
                 }
-                body.delete(0, body.length());
-                chunk.release();
-            } else {
-                // even if body content is empty, call request.handleBody method.
-                if (request.getBodyHandler()!=null) {
-                    request.handleBody(EMPTY_BODY);
-                }
+            } catch (HttpRequestException e) {
+                HttpServer.returnError(request, e.getMessage(), e.getStatusCode());
             }
         } else if (msg instanceof HttpContent) {
             HttpContent chunk = (HttpContent) msg;
@@ -73,8 +77,6 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
         } else if (msg instanceof WebSocketFrame) {
             routes.handle(ctx, (WebSocketFrame) msg);
-        } else {
-//            super.channelRead(ctx, msg);
         }
     }
 
@@ -112,12 +114,6 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
                 ctx.attr(RouteMatcher.PATH).set(serverHandler.request.path());
                 ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
             }
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            cause.printStackTrace();
-            ctx.close();
         }
     }
 }
