@@ -7,8 +7,6 @@ import org.rakam.server.http.HttpServer;
 import org.rakam.server.http.HttpServerBuilder;
 import org.rakam.server.http.HttpService;
 import org.rakam.server.http.annotations.ApiOperation;
-import org.rakam.server.http.annotations.ApiResponse;
-import org.rakam.server.http.annotations.ApiResponses;
 import org.rakam.server.http.annotations.Authorization;
 import org.rakam.server.http.annotations.BodyParam;
 import org.rakam.server.http.annotations.JsonRequest;
@@ -27,37 +25,8 @@ public class HttpServerTest {
 
     @Path("/")
     public static class CustomHttpServer extends HttpService {
-//        @GET
-//        @ApiOperation(value = "Get user storage metadata", authorizations = @Authorization(value = "read_key"))
-//        @ApiResponses(value = {
-//                @ApiResponse(code = 400, message = "Project does not exist.")})
-//        @Path("/metadata")
-//        public String test(@Named("test") String project) {
-//            return project;
-//        }
-//
-//        @GET
-//        @ApiOperation(value = "Get user storage metadata", authorizations = @Authorization(value = "read_key"))
-//        @ApiResponses(value = {
-//                @ApiResponse(code = 400, message = "Project does not exist.")})
-//        @Path("/raw")
-//        public String raw(RakamHttpRequest request, @Named("test") String project) {
-//            return project;
-//        }
-//
-//        @JsonRequest
-//        @ApiOperation(value = "Get user storage metadata", authorizations = @Authorization(value = "read_key"))
-//        @ApiResponses(value = {
-//                @ApiResponse(code = 400, message = "Project does not exist.")})
-//        @Path("/json")
-//        public String testJson(@Named("test") String project, @ApiParam("test") String test) {
-//            return project;
-//        }
-
         @JsonRequest
         @ApiOperation(value = "Get user storage metadata", authorizations = @Authorization(value = "read_key"))
-        @ApiResponses(value = {
-                @ApiResponse(code = 400, message = "Project does not exist.")})
         @Path("/jsonbean")
         public String testJsonBean(@Named("test") String project, @BodyParam Demo demo) {
             return project;

@@ -40,9 +40,9 @@ import org.rakam.server.http.annotations.ApiParam;
 import org.rakam.server.http.annotations.ApiResponse;
 import org.rakam.server.http.annotations.ApiResponses;
 import org.rakam.server.http.annotations.Authorization;
+import org.rakam.server.http.annotations.BodyParam;
 import org.rakam.server.http.annotations.IgnoreApi;
 import org.rakam.server.http.annotations.JsonRequest;
-import org.rakam.server.http.annotations.BodyParam;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +70,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
 
 import static java.lang.String.format;
@@ -79,18 +80,19 @@ public class SwaggerReader {
 
     private final Swagger swagger;
     private final ModelConverters modelConverters;
+    private final BiConsumer<Method, Operation> swaggerOperationConsumer;
+    private final Property errorProperty;
 
-    public SwaggerReader(Swagger swagger, ObjectMapper mapper, Map<Class, PrimitiveType> externalTypes) {
+    public SwaggerReader(Swagger swagger, ObjectMapper mapper, BiConsumer<Method, Operation> swaggerOperationConsumer, Map<Class, PrimitiveType> externalTypes) {
         this.swagger = swagger;
         modelConverters = new ModelConverters(mapper);
+        this.swaggerOperationConsumer = swaggerOperationConsumer;
         modelConverters.addConverter(new ModelResolver(mapper));
         if (externalTypes != null) {
             setExternalTypes(externalTypes);
         }
-    }
-
-    public SwaggerReader(Swagger swagger, ObjectMapper mapper) {
-        this(swagger, mapper, null);
+        errorProperty = modelConverters.readAsProperty(HttpServer.ErrorMessage.class);
+        swagger.addDefinition("ErrorMessage", modelConverters.read(HttpServer.ErrorMessage.class).entrySet().iterator().next().getValue());
     }
 
     private void setExternalTypes(Map<Class, PrimitiveType> externalTypes) {
@@ -250,6 +252,8 @@ public class SwaggerReader {
                                 path = new Path();
                                 swagger.path(operationPath, path);
                             }
+
+                            swaggerOperationConsumer.accept(method, operation);
                             path.set(httpMethod, operation);
                         }
                     }
@@ -537,7 +541,7 @@ public class SwaggerReader {
                     else
                         responseProperty = property;
                     operation.response(200, new Response()
-                            .description("successful operation")
+                            .description("Successful request")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
                 }
@@ -547,7 +551,7 @@ public class SwaggerReader {
                 if (model == null) {
                     Property p = modelConverters.readAsProperty(responseClass);
                     operation.response(200, new Response()
-                            .description("successful operation")
+                            .description("Successful request")
                             .schema(p)
                             .headers(defaultResponseHeaders));
                 } else {
@@ -562,7 +566,7 @@ public class SwaggerReader {
                     else
                         responseProperty = new RefProperty().asDefault(name);
                     operation.response(200, new Response()
-                            .description("successful operation")
+                            .description("Successful operation")
                             .schema(responseProperty)
                             .headers(defaultResponseHeaders));
                     swagger.model(name, model);
@@ -598,12 +602,18 @@ public class SwaggerReader {
 
                 Response response = new Response()
                         .description(apiResponse.message())
+                        .schema(errorProperty)
                         .headers(responseHeaders);
 
-                if (apiResponse.code() == 0)
+                if (apiResponse.response() != null && apiResponse.response() != Void.class) {
+                    response.schema(modelConverters.readAsProperty(apiResponse.response()));
+                }
+
+                if (apiResponse.code() == 0) {
                     operation.defaultResponse(response);
-                else
+                } else {
                     operation.response(apiResponse.code(), response);
+                }
 
                 responseClass = apiResponse.response();
                 if (responseClass != null && !responseClass.equals(java.lang.Void.class)) {
@@ -681,7 +691,7 @@ public class SwaggerReader {
             } else {
                 operation.setParameters(ImmutableList.of());
 //                throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
-//                                "or a single parameter that has @BodyParam annotation or a single parameter that is RakamHttpRequest class.",
+//                                "or a single parameter that has @BodyParam annotation or a single parameter RakamHttpRequest parameter.",
 //                        method.getDeclaringClass().getName() + "." + method.getName()));
             }
         } else if (explicitType != null) {
@@ -708,7 +718,7 @@ public class SwaggerReader {
         }
 
         if (operation.getResponses() == null) {
-            operation.defaultResponse(new Response().description("successful operation"));
+            operation.defaultResponse(new Response().description("Successful request"));
         }
         return operation;
     }

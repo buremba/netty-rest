@@ -1,19 +1,20 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
+import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
 import io.swagger.util.PrimitiveType;
 
 import java.lang.reflect.Method;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import java.util.function.Predicate;
 
 public class HttpServerBuilder {
@@ -29,6 +30,7 @@ public class HttpServerBuilder {
     private boolean proxyProtocol;
     private ExceptionHandler exceptionHandler;
     private Map<String, IRequestParameterFactory> customRequestParameters;
+    private BiConsumer<Method, Operation> swaggerOperationConsumer;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -77,6 +79,11 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setSwaggerOperationProcessor(BiConsumer<Method, Operation> consumer) {
+        this.swaggerOperationConsumer = consumer;
+        return this;
+    }
+
     public HttpServerBuilder setProxyProtocol(boolean proxyProtocol) {
         this.proxyProtocol = proxyProtocol;
         return this;
@@ -111,12 +118,19 @@ public class HttpServerBuilder {
             customRequestParameters = ImmutableMap.of();
         }
         return new HttpServer(
-                httpServices, websockerServices,
-                swagger, eventLoopGroup,
+                httpServices,
+                websockerServices,
+                swagger,
+                eventLoopGroup,
                 jsonRequestPreprocessors.build(),
                 postProcessorEntryBuilder.build(),
                 mapper == null ? HttpServer.DEFAULT_MAPPER : mapper,
-                overridenMappings, exceptionHandler, customRequestParameters, debugMode, proxyProtocol);
+                overridenMappings,
+                exceptionHandler,
+                customRequestParameters,
+                swaggerOperationConsumer,
+                debugMode,
+                proxyProtocol);
     }
 
     public interface ExceptionHandler {

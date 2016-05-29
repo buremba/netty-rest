@@ -1,5 +1,7 @@
 package org.rakam.server.http;
 
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -32,6 +34,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.internal.ConcurrentSet;
+import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
@@ -104,6 +107,7 @@ public class HttpServer {
     private final List<PostProcessorEntry> postProcessors;
     private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     private final Map<String, IRequestParameterFactory> customParameters;
+    private final BiConsumer<Method, Operation> swaggerOperationConsumer;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -122,13 +126,14 @@ public class HttpServer {
                List<PreprocessorEntry> preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
                ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
                HttpServerBuilder.ExceptionHandler exceptionHandler, Map<String, IRequestParameterFactory> customParameters,
-               boolean debugMode, boolean proxyProtocol) {
+               BiConsumer<Method, Operation> swaggerOperationConsumer, boolean debugMode, boolean proxyProtocol) {
         this.routeMatcher = new RouteMatcher(debugMode);
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
         this.mapper = mapper;
         this.customParameters = customParameters;
+        this.swaggerOperationConsumer = swaggerOperationConsumer;
         this.debugMode = debugMode;
         this.uncaughtExceptionHandler = exceptionHandler == null ? (t, e) -> {
         } : exceptionHandler;
@@ -176,7 +181,8 @@ public class HttpServer {
         } else {
             swaggerBeanMappings = this.swaggerBeanMappings;
         }
-        SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerBeanMappings);
+
+        SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerOperationConsumer, swaggerBeanMappings);
 
         httpServicePlugins.forEach(service -> {
             reader.read(service.getClass());
@@ -442,7 +448,7 @@ public class HttpServer {
                     }
                     handleAsyncJsonRequest(mapper, request, apply, postProcessors);
                 } else {
-                    handleJsonRequest(mapper, service, request, methodHandle, objects, postProcessors);
+                    handleJsonRequest(mapper, request, methodHandle, objects, postProcessors);
                 }
             };
         }
@@ -490,7 +496,7 @@ public class HttpServer {
         }
     }
 
-    void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, MethodHandle methodHandle, Object[] arguments, List<ResponsePostProcessor> postProcessors) {
+    void handleJsonRequest(ObjectMapper mapper, RakamHttpRequest request, MethodHandle methodHandle, Object[] arguments, List<ResponsePostProcessor> postProcessors) {
         try {
             Object apply = methodHandle.invokeWithArguments(arguments);
             returnJsonResponse(mapper, request, OK, apply, postProcessors);
@@ -501,8 +507,8 @@ public class HttpServer {
         } catch (Throwable e) {
             uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
-            ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
-            returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
+            returnJsonResponse(mapper, request, BAD_REQUEST,
+                    errorMessage("Error processing request.", INTERNAL_SERVER_ERROR), postProcessors);
         }
     }
 
@@ -517,8 +523,8 @@ public class HttpServer {
         } catch (Exception e) {
             uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
-            ObjectNode errorMessage = errorMessage("Error processing request.", INTERNAL_SERVER_ERROR);
-            returnJsonResponse(mapper, request, BAD_REQUEST, errorMessage, postProcessors);
+            returnJsonResponse(mapper, request, BAD_REQUEST,
+                    errorMessage("Error processing request.", INTERNAL_SERVER_ERROR), postProcessors);
         }
     }
 
@@ -672,25 +678,29 @@ public class HttpServer {
     }
 
     public static void returnError(RakamHttpRequest request, String message, HttpResponseStatus statusCode) {
-        ObjectNode obj = DEFAULT_MAPPER.createObjectNode()
-                .put("error", message)
-                .put("error_code", statusCode.code());
-
-        String bytes;
+        byte[] bytes;
         try {
-            bytes = DEFAULT_MAPPER.writeValueAsString(obj);
+            bytes = DEFAULT_MAPPER.writeValueAsBytes(errorMessage(message, statusCode));
         } catch (JsonProcessingException e) {
             throw new RuntimeException();
         }
-        request.response(bytes, statusCode)
-                .headers().set("Content-Type", "application/json");
+        request.response(bytes, statusCode).headers().set("Content-Type", "application/json");
         request.end();
     }
 
-    public static ObjectNode errorMessage(String message, HttpResponseStatus statusCode) {
-        return DEFAULT_MAPPER.createObjectNode()
-                .put("error", message)
-                .put("error_code", statusCode.code());
+    public static ErrorMessage errorMessage(String message, HttpResponseStatus statusCode) {
+        return new ErrorMessage(message, statusCode.code());
+    }
+
+    public static class ErrorMessage {
+        public final String error;
+        public final int error_code;
+
+        @JsonCreator
+        private ErrorMessage(@JsonProperty("error") String error, @JsonProperty("error_code") int error_code) {
+            this.error = error;
+            this.error_code = error_code;
+        }
     }
 
     void requestError(Throwable ex, RakamHttpRequest request) {

@@ -134,6 +134,12 @@ public class RakamHttpRequest implements HttpRequest {
         return this;
     }
 
+    public RakamHttpRequest response(byte[] content, HttpResponseStatus status) {
+        final ByteBuf byteBuf = Unpooled.copiedBuffer(content);
+        response = new DefaultFullHttpResponse(HTTP_1_1, status, byteBuf);
+        return this;
+    }
+
     public RakamHttpRequest response(String content, HttpResponseStatus status) {
         final ByteBuf byteBuf = Unpooled.wrappedBuffer(content.getBytes(UTF_8));
         response = new DefaultFullHttpResponse(HTTP_1_1, status, byteBuf);
