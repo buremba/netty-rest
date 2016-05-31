@@ -51,7 +51,7 @@ public class RouteMatcher {
         if(request.getMethod() == HttpMethod.OPTIONS) {
             DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
 
-            response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, api_key");
+            response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, master_key, read_key, write_key");
             response.headers().set(ACCESS_CONTROL_EXPOSE_HEADERS, "_auto_action");
 
             request.response(response).end();
