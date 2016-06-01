@@ -17,6 +17,7 @@ import java.util.Objects;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW_HEADERS;
 import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS;
+import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 public class RouteMatcher {
     private final boolean debugMode;
@@ -49,7 +50,7 @@ public class RouteMatcher {
             path = path.substring(0, lastIndex);
         // TODO: Make it optional
         if(request.getMethod() == HttpMethod.OPTIONS) {
-            DefaultFullHttpResponse response = new DefaultFullHttpResponse(HttpVersion.HTTP_1_1, HttpResponseStatus.OK);
+            DefaultFullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
 
             response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, master_key, read_key, write_key");
             response.headers().set(ACCESS_CONTROL_EXPOSE_HEADERS, "_auto_action");

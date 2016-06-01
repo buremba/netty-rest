@@ -32,14 +32,15 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+
+        if (HttpHeaders.is100ContinueExpected(request)) {
+            ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
+        }
+
         if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
             this.request = createRequest(ctx);
             this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
-            if (HttpHeaders.is100ContinueExpected(request)) {
-                ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
-            } else {
-                routes.handle(request);
-            }
+            routes.handle(request);
         }else
         if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
