@@ -17,13 +17,15 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 
 public class HttpServerHandler extends ChannelInboundHandlerAdapter {
+    private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     protected RakamHttpRequest request;
     RouteMatcher routes;
     private StringBuilder body = new StringBuilder(2 << 15);
     private static String EMPTY_BODY = "";
 
-    public HttpServerHandler(RouteMatcher routes) {
+    public HttpServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler) {
         this.routes = routes;
+        this.uncaughtExceptionHandler = uncaughtExceptionHandler;
     }
 
     RakamHttpRequest createRequest(ChannelHandlerContext ctx) {
@@ -83,6 +85,7 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+        uncaughtExceptionHandler.handle(request, cause);
         cause.printStackTrace();
         ctx.close();
     }

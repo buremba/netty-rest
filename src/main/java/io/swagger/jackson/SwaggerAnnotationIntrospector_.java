@@ -12,20 +12,25 @@ import io.swagger.annotations.ApiModelProperty;
 import org.rakam.server.http.annotations.ApiParam;
 
 import javax.xml.bind.annotation.XmlElement;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
+public class SwaggerAnnotationIntrospector_
+        extends AnnotationIntrospector
+{
     private static final long serialVersionUID = 1L;
 
     @Override
-    public Version version() {
+    public Version version()
+    {
         return PackageVersion.VERSION;
     }
 
     @Override
-    public boolean hasIgnoreMarker(AnnotatedMember m) {
+    public boolean hasIgnoreMarker(AnnotatedMember m)
+    {
         ApiModelProperty ann = m.getAnnotation(ApiModelProperty.class);
         if (ann != null && ann.hidden()) {
             return true;
@@ -34,9 +39,10 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public Boolean hasRequiredMarker(AnnotatedMember m) {
+    public Boolean hasRequiredMarker(AnnotatedMember m)
+    {
         ApiParam apiParam = m.getAnnotation(ApiParam.class);
-        if(apiParam !=null) {
+        if (apiParam != null) {
             return apiParam.required();
         }
 
@@ -54,7 +60,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public String findPropertyDescription(Annotated a) {
+    public String findPropertyDescription(Annotated a)
+    {
         ApiModel model = a.getAnnotation(ApiModel.class);
         if (model != null && !"".equals(model.description())) {
             return model.description();
@@ -67,7 +74,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public PropertyName findNameForSerialization(Annotated a) {
+    public PropertyName findNameForSerialization(Annotated a)
+    {
         ApiParam model = a.getAnnotation(ApiParam.class);
         if (model != null && !"".equals(model.value())) {
             return new PropertyName(model.value());
@@ -76,7 +84,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public PropertyName findNameForDeserialization(Annotated a) {
+    public PropertyName findNameForDeserialization(Annotated a)
+    {
         ApiParam model = a.getAnnotation(ApiParam.class);
         if (model != null && !"".equals(model.value())) {
             return new PropertyName(model.value());
@@ -85,7 +94,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public Integer findPropertyIndex(Annotated a) {
+    public Integer findPropertyIndex(Annotated a)
+    {
         ApiModelProperty prop = a.getAnnotation(ApiModelProperty.class);
         if (prop != null && prop.position() != 0) {
             return prop.position();
@@ -94,7 +104,8 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public List<NamedType> findSubtypes(Annotated a) {
+    public List<NamedType> findSubtypes(Annotated a)
+    {
         final ApiModel api = a.getAnnotation(ApiModel.class);
         if (api != null) {
             final Class<?>[] classes = api.subTypes();
@@ -111,17 +122,20 @@ public class SwaggerAnnotationIntrospector_ extends AnnotationIntrospector {
     }
 
     @Override
-    public String findImplicitPropertyName(AnnotatedMember member) {
+    public String findImplicitPropertyName(AnnotatedMember member)
+    {
         ApiParam annotation = member.getAnnotation(ApiParam.class);
         if (annotation != null && annotation.value() != "") {
             return annotation.value();
-        } else {
+        }
+        else {
             return super.findImplicitPropertyName(member);
         }
     }
 
     @Override
-    public String findTypeName(AnnotatedClass ac) {
+    public String findTypeName(AnnotatedClass ac)
+    {
         return null;
     }
 }

@@ -8,8 +8,8 @@ public class HaProxyBackendServerHandler extends HttpServerHandler {
     AttributeKey<String> CLIENT_IP = AttributeKey.valueOf("ip");
 
 
-    public HaProxyBackendServerHandler(RouteMatcher routes) {
-        super(routes);
+    public HaProxyBackendServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler) {
+        super(routes, uncaughtExceptionHandler);
     }
 
     @Override

@@ -28,6 +28,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.haproxy.HAProxyMessageDecoder;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
 import io.netty.handler.codec.http.FullHttpResponse;
+import io.netty.handler.codec.http.HttpContentCompressor;
 import io.netty.handler.codec.http.HttpMethod;
 import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpServerCodec;
@@ -644,9 +645,9 @@ public class HttpServer {
                         HttpServerHandler handler;
                         if (proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                            handler = new HaProxyBackendServerHandler(routeMatcher);
+                            handler = new HaProxyBackendServerHandler(routeMatcher, uncaughtExceptionHandler);
                         } else {
-                            handler = new HttpServerHandler(routeMatcher);
+                            handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler);
                         }
 
                         p.addLast("httpCodec", new HttpServerCodec());

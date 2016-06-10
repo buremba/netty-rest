@@ -171,11 +171,9 @@ public class RakamHttpRequest implements HttpRequest {
         }
         boolean keepAlive = HttpHeaders.isKeepAlive(request);
 
-        for (Map.Entry<String, String> entry : request.headers()) {
-            if (entry.getKey().equals("Origin")) {
-                response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, entry.getValue());
-                break;
-            }
+        String origin = request.headers().get(ORIGIN);
+        if(origin != null) {
+            response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
         }
 
         if (keepAlive) {
