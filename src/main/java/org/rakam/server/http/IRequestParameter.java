@@ -99,7 +99,12 @@ public interface IRequestParameter<T> {
         }
 
         public Object extract(ObjectNode node, RakamHttpRequest request) {
-            return mapper.convertValue(node, type);
+            try {
+                return mapper.convertValue(node, type);
+            }
+            catch (IllegalArgumentException e) {
+                throw new HttpRequestException(e.getMessage(), BAD_REQUEST);
+            }
         }
     }
 }

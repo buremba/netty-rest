@@ -180,7 +180,13 @@ public class SwaggerReader {
 
                     String httpMethod = extractOperationMethod(apiOperation, method);
 
-                    Operation operation = parseMethod(cls, method);
+                    Operation operation = null;
+                    try {
+                        operation = parseMethod(cls, method);
+                    }
+                    catch (Exception e) {
+                        LOGGER.warn("Unable to read method "+method.toString(), e);
+                    }
 
                     if (operation == null) {
                         continue;

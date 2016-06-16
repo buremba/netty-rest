@@ -1,6 +1,5 @@
 package org.rakam.server.http;
 
-
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
@@ -13,27 +12,33 @@ import io.netty.util.CharsetUtil;
 import io.netty.util.internal.ConcurrentSet;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.CONTINUE;
+import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
-
-public class HttpServerHandler extends ChannelInboundHandlerAdapter {
+public class HttpServerHandler
+        extends ChannelInboundHandlerAdapter
+{
     private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     protected RakamHttpRequest request;
     RouteMatcher routes;
     private StringBuilder body = new StringBuilder(2 << 15);
     private static String EMPTY_BODY = "";
 
-    public HttpServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler) {
+    public HttpServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler)
+    {
         this.routes = routes;
         this.uncaughtExceptionHandler = uncaughtExceptionHandler;
     }
 
-    RakamHttpRequest createRequest(ChannelHandlerContext ctx) {
+    RakamHttpRequest createRequest(ChannelHandlerContext ctx)
+    {
         return new RakamHttpRequest(ctx);
     }
 
     @Override
-    public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+    public void channelRead(ChannelHandlerContext ctx, Object msg)
+            throws Exception
+    {
 
         if (HttpHeaders.is100ContinueExpected(request)) {
             ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
@@ -43,80 +48,96 @@ public class HttpServerHandler extends ChannelInboundHandlerAdapter {
             this.request = createRequest(ctx);
             this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
             routes.handle(request);
-        }else
-        if (msg instanceof LastHttpContent) {
+        }
+        else if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
             try {
                 if (chunk.content().isReadable()) {
                     String s = chunk.content().toString(CharsetUtil.UTF_8);
                     if (body == null || body.length() == 0) {
                         request.handleBody(s);
-                    } else {
+                    }
+                    else {
                         body.append(s);
                         request.handleBody(body.toString());
                     }
                     body.delete(0, body.length());
                     chunk.release();
-                } else {
+                }
+                else {
                     // even if body content is empty, call request.handleBody method.
-                    if (request.getBodyHandler()!=null) {
+                    if (request.getBodyHandler() != null) {
                         request.handleBody(EMPTY_BODY);
                     }
                 }
-            } catch (HttpRequestException e) {
+            }
+            catch (HttpRequestException e) {
                 HttpServer.returnError(request, e.getMessage(), e.getStatusCode());
             }
-        } else if (msg instanceof HttpContent) {
+        }
+        else if (msg instanceof HttpContent) {
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
                 String s = chunk.content().toString(CharsetUtil.UTF_8);
                 if (body == null) {
                     body = new StringBuilder(s);
-                } else {
+                }
+                else {
                     body.append(s);
                 }
                 chunk.release();
             }
-
-        } else if (msg instanceof WebSocketFrame) {
+        }
+        else if (msg instanceof WebSocketFrame) {
             routes.handle(ctx, (WebSocketFrame) msg);
         }
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
+    {
         uncaughtExceptionHandler.handle(request, cause);
         cause.printStackTrace();
+        HttpServer.returnError(request, "An error occurred", INTERNAL_SERVER_ERROR);
         ctx.close();
     }
 
-    protected static class DebugHttpServerHandler extends ChannelInboundHandlerAdapter {
+    protected static class DebugHttpServerHandler
+            extends ChannelInboundHandlerAdapter
+    {
         private final ConcurrentSet<ChannelHandlerContext> activeChannels;
         private final HttpServerHandler serverHandler;
         final static AttributeKey<Integer> START_TIME = AttributeKey.valueOf("/start_time");
 
-        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, HttpServerHandler handler) {
+        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, HttpServerHandler handler)
+        {
             this.activeChannels = activeChannels;
             this.serverHandler = handler;
         }
 
         @Override
-        public void channelActive(ChannelHandlerContext ctx) throws Exception {
+        public void channelActive(ChannelHandlerContext ctx)
+                throws Exception
+        {
             activeChannels.add(ctx);
         }
 
         @Override
-        public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        public void channelInactive(ChannelHandlerContext ctx)
+                throws Exception
+        {
             activeChannels.remove(ctx);
         }
 
         @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) throws Exception {
+        public void channelRead(ChannelHandlerContext ctx, Object msg)
+                throws Exception
+        {
             serverHandler.channelRead(ctx, msg);
 
             if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
                 ctx.attr(RouteMatcher.PATH).set(serverHandler.request.path());
-                ctx.attr(START_TIME).set((int) (System.currentTimeMillis()/1000));
+                ctx.attr(START_TIME).set((int) (System.currentTimeMillis() / 1000));
             }
         }
     }
