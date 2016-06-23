@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
@@ -115,6 +116,7 @@ public class HttpServer {
             .put(LocalDate.class, PrimitiveType.DATE)
             .put(Duration.class, PrimitiveType.STRING)
             .put(Instant.class, PrimitiveType.DATE_TIME)
+            .put(ObjectNode.class, PrimitiveType.OBJECT)
             .build();
 
     static {
