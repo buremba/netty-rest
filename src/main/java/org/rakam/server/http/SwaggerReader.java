@@ -528,7 +528,7 @@ public class SwaggerReader {
             }
         }
 
-        if (method.isAnnotationPresent(JsonRequest.class)) {
+        if (responseClass == null && !method.getReturnType().equals(Void.class) ) {
             responseClass = getActualReturnType(method);
         }
 
@@ -696,9 +696,6 @@ public class SwaggerReader {
                 readImplicitParameters(method, operation);
             } else {
                 operation.setParameters(ImmutableList.of());
-//                throw new IllegalStateException(String.format("Method for api endpoint %s is not valid. The parameters must either have @ApiParam annotations, " +
-//                                "or a single parameter that has @BodyParam annotation or a single parameter RakamHttpRequest parameter.",
-//                        method.getDeclaringClass().getName() + "." + method.getName()));
             }
         } else if (explicitType != null) {
             Property property = modelConverters.readAsProperty(explicitType);
@@ -820,24 +817,24 @@ public class SwaggerReader {
     }
 
     private List<Parameter> readFormParameters(java.lang.reflect.Parameter[] parameters) {
-        return Arrays.stream(parameters).filter(p -> p.isAnnotationPresent(ApiParam.class)).map(parameter -> {
+        ModelImpl model = new ModelImpl();
+        model.setType("object");
+
+        Arrays.stream(parameters).filter(p -> p.isAnnotationPresent(ApiParam.class)).forEach(parameter -> {
             ApiParam ann = parameter.getAnnotation(ApiParam.class);
             Property property = modelConverters.readAsProperty(parameter.getParameterizedType());
+            property.setRequired(ann.required());
+            property.setAccess(ann.access());
+            property.setDefault(ann.defaultValue());
+            property.setDescription(ann.description());
+            model.addProperty(ann.value(), property);
+        });
 
-            FormParameter formParameter = new FormParameter();
-
-            formParameter.setRequired(property.getRequired());
-            formParameter.setName(ann.value());
-            formParameter.setDescription(property.getDescription());
-            formParameter.setDefaultValue(property.getExample());
-
-            formParameter.setType(property.getType());
-            formParameter.setFormat(property.getFormat());
-            if (property instanceof ArrayProperty) {
-                formParameter.setItems(((ArrayProperty) property).getItems());
-            }
-            return formParameter;
-        }).collect(Collectors.toList());
+        BodyParameter param = new BodyParameter();
+        param.setRequired(true);
+        param.setName("body");
+        param.setSchema(model);
+        return ImmutableList.of(param);
     }
 
     private List<Parameter> getParameters(Class<?> cls, Type type, Annotation[] annotations) {
