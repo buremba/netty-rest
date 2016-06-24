@@ -564,6 +564,12 @@ public class HttpServer {
     }
 
     void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply, List<ResponsePostProcessor> postProcessors) {
+        if(apply == null) {
+            NullPointerException e = new NullPointerException();
+            uncaughtExceptionHandler.handle(request, e);
+            LOGGER.error(e, "Error while processing request. The async method returned null.");
+            return;
+        }
         apply.whenComplete((BiConsumer<Object, Throwable>) (result, ex) -> {
             if (ex != null) {
                 while (ex instanceof CompletionException) {
