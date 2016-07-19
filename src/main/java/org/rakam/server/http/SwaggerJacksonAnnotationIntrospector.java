@@ -26,6 +26,8 @@ public class SwaggerJacksonAnnotationIntrospector extends AnnotationIntrospector
         }
     }
 
+
+
     @Override
     public Boolean hasRequiredMarker(AnnotatedMember m) {
         ApiParam apiParam = m.getAnnotation(ApiParam.class);

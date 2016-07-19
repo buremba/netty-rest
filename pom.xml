@@ -17,7 +17,7 @@
 
     <properties>
         <jackson.version>2.4.5</jackson.version>
-        <swagger.version>1.5.4</swagger.version>
+        <swagger.version>1.5.9</swagger.version>
         <netty.version>4.0.33.Final</netty.version>
         <air.version>0.117</air.version>
     </properties>

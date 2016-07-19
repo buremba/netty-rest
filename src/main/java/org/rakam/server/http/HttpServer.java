@@ -36,6 +36,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
 import io.netty.util.internal.ConcurrentSet;
+import io.swagger.models.Model;
 import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
@@ -464,7 +465,7 @@ public class HttpServer {
             boolean.class, Boolean::parseBoolean,
             float.class, Float::parseFloat);
 
-    IRequestParameter getHandler(Parameter parameter, HttpService service, Method method) {
+    private IRequestParameter getHandler(Parameter parameter, HttpService service, Method method) {
         if (parameter.isAnnotationPresent(ApiParam.class)) {
             ApiParam apiParam = parameter.getAnnotation(ApiParam.class);
             return new BodyParameter(mapper, apiParam.value(), getActualType(service.getClass(), parameter.getParameterizedType()),
@@ -476,7 +477,12 @@ public class HttpServer {
                 return new HeaderParameter(param.value(), param.required(),
                         actualType.equals(String.class) ? (Function) Function.identity() : primitiveMapper.get(actualType));
             } else {
-                throw new IllegalArgumentException(String.format("Invalid HeaderParameter type: %s. Header parameters can only be String or primitive types", actualType));
+                if(actualType instanceof Class && ((Class) actualType).isEnum()) {
+                    return new HeaderParameter<Object>(param.value(), param.required(),
+                            o -> Enum.valueOf((Class<Enum>) actualType, o));
+                } else {
+                    throw new IllegalArgumentException(String.format("Invalid HeaderParameter type: %s. Header parameters can only be String, Enum or primitive types", actualType));
+                }
             }
 
         } else if (parameter.isAnnotationPresent(CookieParam.class)) {
