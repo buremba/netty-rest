@@ -664,7 +664,8 @@ public class HttpServer {
                             handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler);
                         }
 
-                        p.addLast("httpCodec", new HttpServerCodec());
+                        // make it configurable
+                        p.addLast("httpCodec", new HttpServerCodec(4096, 36192, 36192));
                         if (debugMode) {
                             p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, handler));
                         } else {

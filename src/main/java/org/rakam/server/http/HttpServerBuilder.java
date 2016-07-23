@@ -6,6 +6,8 @@ import com.google.common.collect.ImmutableList.Builder;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.epoll.Epoll;
+import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
@@ -106,7 +108,7 @@ public class HttpServerBuilder {
 
     public HttpServer build() {
         if (eventLoopGroup == null) {
-            eventLoopGroup = new NioEventLoopGroup();
+            eventLoopGroup = Epoll.isAvailable() ? new EpollEventLoopGroup() : new NioEventLoopGroup();
         }
         if (swagger == null) {
             swagger = new Swagger();

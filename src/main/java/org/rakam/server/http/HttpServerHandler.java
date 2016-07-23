@@ -3,14 +3,18 @@ package org.rakam.server.http;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.handler.codec.http.DefaultFullHttpResponse;
+import io.netty.handler.codec.http.DefaultHttpRequest;
 import io.netty.handler.codec.http.HttpContent;
 import io.netty.handler.codec.http.HttpHeaders;
+import io.netty.handler.codec.http.HttpObject;
+import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
 import io.netty.util.internal.ConcurrentSet;
 
+import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.CONTINUE;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
@@ -44,7 +48,14 @@ public class HttpServerHandler
             ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
         }
 
-        if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
+        if (msg instanceof HttpRequest) {
+            if(msg instanceof HttpObject) {
+                if(((HttpRequest) msg).getDecoderResult().isFailure()) {
+                    Throwable cause = ((HttpRequest) msg).getDecoderResult().cause();
+                    HttpServer.returnError(request, cause.getMessage(), BAD_REQUEST);
+                }
+            }
+
             this.request = createRequest(ctx);
             this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
             routes.handle(request);
