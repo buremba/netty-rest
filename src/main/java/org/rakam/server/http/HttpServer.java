@@ -478,8 +478,8 @@ public class HttpServer {
                         actualType.equals(String.class) ? (Function) Function.identity() : primitiveMapper.get(actualType));
             } else {
                 if(actualType instanceof Class && ((Class) actualType).isEnum()) {
-                    return new HeaderParameter<Object>(param.value(), param.required(),
-                            o -> Enum.valueOf((Class<Enum>) actualType, o));
+                    return new HeaderParameter<>(param.value(), param.required(),
+                            o -> mapper.convertValue(o, ((Class) actualType)));
                 } else {
                     throw new IllegalArgumentException(String.format("Invalid HeaderParameter type: %s. Header parameters can only be String, Enum or primitive types", actualType));
                 }
@@ -488,6 +488,14 @@ public class HttpServer {
         } else if (parameter.isAnnotationPresent(CookieParam.class)) {
             CookieParam param = parameter.getAnnotation(CookieParam.class);
             return new IRequestParameter.CookieParameter(param.value(), param.required());
+        } else if (parameter.isAnnotationPresent(Named.class)) {
+            Named param = parameter.getAnnotation(Named.class);
+            IRequestParameterFactory iRequestParameter = customParameters.get(param.value());
+            if (iRequestParameter == null) {
+                throw new IllegalStateException(String.format("Custom parameter %s doesn't have implementation", param.value()));
+            }
+
+            return iRequestParameter.create(method);
         } else if (parameter.isAnnotationPresent(Named.class)) {
             Named param = parameter.getAnnotation(Named.class);
             IRequestParameterFactory iRequestParameter = customParameters.get(param.value());

@@ -12,23 +12,28 @@ import java.util.function.Function;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 
-public interface IRequestParameter<T> {
+public interface IRequestParameter<T>
+{
 
     T extract(ObjectNode node, RakamHttpRequest request);
 
-    class HeaderParameter<T> implements IRequestParameter {
+    class HeaderParameter<T>
+            implements IRequestParameter
+    {
         public final String name;
         public final boolean required;
         private final Function<String, T> mapper;
 
-        HeaderParameter(String name, boolean required, Function<String, T> mapper) {
+        HeaderParameter(String name, boolean required, Function<String, T> mapper)
+        {
             this.name = name;
             this.required = required;
             this.mapper = mapper;
         }
 
         @Override
-        public T extract(ObjectNode node, RakamHttpRequest request) {
+        public T extract(ObjectNode node, RakamHttpRequest request)
+        {
             String value = request.headers().get(name);
             if (value == null && required) {
                 throw new HttpRequestException("'" + name + "' header parameter is required.", BAD_REQUEST);
@@ -38,17 +43,21 @@ public interface IRequestParameter<T> {
         }
     }
 
-    class CookieParameter implements IRequestParameter<String> {
+    class CookieParameter
+            implements IRequestParameter<String>
+    {
         public final String name;
         public final boolean required;
 
-        CookieParameter(String name, boolean required) {
+        CookieParameter(String name, boolean required)
+        {
             this.name = name;
             this.required = required;
         }
 
         @Override
-        public String extract(ObjectNode node, RakamHttpRequest request) {
+        public String extract(ObjectNode node, RakamHttpRequest request)
+        {
             for (Cookie cookie : request.cookies()) {
                 if (name.equals(cookie.name())) {
                     // TODO fixme: the value of cookie parameter always must be String.
@@ -59,26 +68,37 @@ public interface IRequestParameter<T> {
         }
     }
 
-    class BodyParameter implements IRequestParameter {
+    class BodyParameter
+            implements IRequestParameter
+    {
         public final String name;
         public final JavaType type;
         public final boolean required;
         private final ObjectMapper mapper;
 
-        BodyParameter(ObjectMapper mapper, String name, Type type, boolean required) {
+        BodyParameter(ObjectMapper mapper, String name, Type type, boolean required)
+        {
             this.name = name;
             this.type = mapper.constructType(type);
             this.mapper = mapper;
             this.required = required;
         }
 
-        public Object extract(ObjectNode node, RakamHttpRequest request) {
+        public Object extract(ObjectNode node, RakamHttpRequest request)
+        {
             JsonNode value = node.get(name);
             Object o;
             if (value == null) {
                 o = null;
-            } else {
-                o = mapper.convertValue(value, type);
+            }
+            else {
+                try {
+                    o = mapper.convertValue(value, type);
+                }
+                catch (IllegalArgumentException e) {
+                    throw new HttpRequestException(name +
+                            " body parameter cannot be cast to " + type.toString(), BAD_REQUEST);
+                }
             }
 
             if (required && (o == null || o == NullNode.getInstance())) {
@@ -89,16 +109,20 @@ public interface IRequestParameter<T> {
         }
     }
 
-    class FullBodyParameter implements IRequestParameter {
+    class FullBodyParameter
+            implements IRequestParameter
+    {
         public final JavaType type;
         private final ObjectMapper mapper;
 
-        FullBodyParameter(ObjectMapper mapper, Type type) {
+        FullBodyParameter(ObjectMapper mapper, Type type)
+        {
             this.type = mapper.constructType(type);
             this.mapper = mapper;
         }
 
-        public Object extract(ObjectNode node, RakamHttpRequest request) {
+        public Object extract(ObjectNode node, RakamHttpRequest request)
+        {
             try {
                 return mapper.convertValue(node, type);
             }
