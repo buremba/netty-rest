@@ -19,37 +19,43 @@ import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_ALLOW
 import static io.netty.handler.codec.http.HttpHeaders.Names.ACCESS_CONTROL_EXPOSE_HEADERS;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
-public class RouteMatcher {
+public class RouteMatcher
+{
     private final boolean debugMode;
     private HashMap<PatternBinding, HttpRequestHandler> routes = new HashMap();
     private HttpRequestHandler noMatch = request -> request.response("404", HttpResponseStatus.NOT_FOUND).end();
     static final AttributeKey<String> PATH = AttributeKey.valueOf("/path");
     private List<Map.Entry<PatternBinding, HttpRequestHandler>> prefixRoutes = new LinkedList<>();
 
-    public RouteMatcher(boolean debugMode) {
+    public RouteMatcher(boolean debugMode)
+    {
         this.debugMode = debugMode;
     }
 
-    public void handle(ChannelHandlerContext ctx, WebSocketFrame frame) {
+    public void handle(ChannelHandlerContext ctx, WebSocketFrame frame)
+    {
         String path = ctx.attr(PATH).get();
         final Object handler = routes.get(new PatternBinding(HttpMethod.GET, path));
         if (handler != null) {
-            if(handler instanceof WebSocketService) {
+            if (handler instanceof WebSocketService) {
                 ((WebSocketService) handler).handle(ctx, frame);
             }
-        } else {
+        }
+        else {
             // TODO: WHAT TO DO?
             ctx.close();
         }
     }
 
-    public void handle(RakamHttpRequest request) {
+    public void handle(RakamHttpRequest request)
+    {
         String path = cleanPath(request.path());
         int lastIndex = path.length() - 1;
-        if(lastIndex > 0 && path.charAt(lastIndex) == '/')
+        if (lastIndex > 0 && path.charAt(lastIndex) == '/') {
             path = path.substring(0, lastIndex);
+        }
         // TODO: Make it optional
-        if(request.getMethod() == HttpMethod.OPTIONS) {
+        if (request.getMethod() == HttpMethod.OPTIONS) {
             DefaultFullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1, HttpResponseStatus.OK);
 
             response.headers().set(ACCESS_CONTROL_ALLOW_HEADERS, "Origin, X-Requested-With, Content-Type, Accept, master_key, read_key, write_key");
@@ -61,13 +67,14 @@ public class RouteMatcher {
 
         final HttpRequestHandler handler = routes.get(new PatternBinding(request.getMethod(), path));
         if (handler != null) {
-            if(handler instanceof WebSocketService) {
+            if (handler instanceof WebSocketService) {
                 request.context().attr(PATH).set(path);
             }
             handler.handle(request);
-        } else {
+        }
+        else {
             for (Map.Entry<PatternBinding, HttpRequestHandler> prefixRoute : prefixRoutes) {
-                if(path.startsWith(prefixRoute.getKey().pattern)) {
+                if (path.startsWith(prefixRoute.getKey().pattern)) {
                     prefixRoute.getValue().handle(request);
                     return;
                 }
@@ -76,17 +83,20 @@ public class RouteMatcher {
         }
     }
 
-    private String cleanPath(String path) {
+    private String cleanPath(String path)
+    {
         StringBuilder builder = new StringBuilder();
         boolean edge = false;
         int length = path.length();
         for (int i = 0; i < length; i++) {
             char c = path.charAt(i);
             if (c == '/') {
-                if(!edge)
+                if (!edge) {
                     builder.append(c);
+                }
                 edge = true;
-            } else {
+            }
+            else {
                 builder.append(c);
                 edge = false;
             }
@@ -94,66 +104,87 @@ public class RouteMatcher {
         return builder.toString();
     }
 
-    public void add(String path, WebSocketService handler) {
+    public void add(String path, WebSocketService handler)
+    {
         PatternBinding key = new PatternBinding(HttpMethod.GET, path);
         routes.put(key, handler);
     }
 
-    public void add(HttpMethod method, String path, HttpRequestHandler handler) {
-        if(path.endsWith("*")) {
+    public void add(HttpMethod method, String path, HttpRequestHandler handler)
+    {
+        if (path.endsWith("*")) {
             String substring = path.substring(0, path.length() - 1);
             routes.put(new PatternBinding(method, substring), handler);
             prefixRoutes.add(new AbstractMap.SimpleImmutableEntry<>(new PatternBinding(method, substring), handler));
-        }else {
+        }
+        else {
+            if (path.length() > 1 && path.endsWith("/")) {
+                path = path.substring(0, path.length() - 1);
+            }
             routes.put(new PatternBinding(method, path), handler);
         }
     }
 
-    public void noMatch(HttpRequestHandler handler) {
+    public void noMatch(HttpRequestHandler handler)
+    {
         noMatch = handler;
     }
 
-    public static class PatternBinding {
+    public static class PatternBinding
+    {
         final HttpMethod method;
         final String pattern;
 
-        private PatternBinding(HttpMethod method, String pattern) {
+        private PatternBinding(HttpMethod method, String pattern)
+        {
             this.method = method;
             this.pattern = pattern;
         }
 
         @Override
-        public boolean equals(Object o) {
-            if (this == o) return true;
-            if (!(o instanceof PatternBinding)) return false;
+        public boolean equals(Object o)
+        {
+            if (this == o) {
+                return true;
+            }
+            if (!(o instanceof PatternBinding)) {
+                return false;
+            }
 
             PatternBinding that = (PatternBinding) o;
 
-            if (!method.equals(that.method)) return false;
-            if (!pattern.equals(that.pattern)) return false;
+            if (!method.equals(that.method)) {
+                return false;
+            }
+            if (!pattern.equals(that.pattern)) {
+                return false;
+            }
 
             return true;
         }
 
         @Override
-        public int hashCode() {
+        public int hashCode()
+        {
             int result = method.hashCode();
             result = 31 * result + pattern.hashCode();
             return result;
         }
-
     }
 
-    public static class MicroRouteMatcher {
+    public static class MicroRouteMatcher
+    {
         private final RouteMatcher routeMatcher;
         private String path;
 
-        public MicroRouteMatcher(RouteMatcher routeMatcher, String path) {
+        public MicroRouteMatcher(RouteMatcher routeMatcher, String path)
+        {
             this.routeMatcher = routeMatcher;
             this.path = path;
         }
 
-        public void add(String lastPath, HttpMethod method, HttpRequestHandler handler) {
+        public void add(String lastPath, HttpMethod method, HttpRequestHandler handler)
+        {
             Objects.requireNonNull(path, "path is not configured");
             routeMatcher.add(method, path.equals("/") ? lastPath : path + lastPath, handler);
         }

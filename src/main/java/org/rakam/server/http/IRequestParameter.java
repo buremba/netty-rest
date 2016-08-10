@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.netty.handler.codec.http.cookie.Cookie;
 
 import java.lang.reflect.Type;
+import java.util.List;
 import java.util.function.Function;
 
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
@@ -64,7 +65,43 @@ public interface IRequestParameter<T>
                     return cookie.value();
                 }
             }
+
+            if (required) {
+                throw new HttpRequestException("'" + name + "' cookie is required.", BAD_REQUEST);
+            }
+
             return null;
+        }
+    }
+
+    class QueryParameter<T>
+            implements IRequestParameter<T>
+    {
+        public final String name;
+        public final boolean required;
+        private final Function<String, T> mapper;
+
+        QueryParameter(String name, boolean required, Function<String, T> mapper)
+        {
+            this.name = name;
+            this.required = required;
+            this.mapper = mapper;
+        }
+
+        @Override
+        public T extract(ObjectNode node, RakamHttpRequest request)
+        {
+            List<String> strings = request.params().get(name);
+            if ((strings == null || strings.isEmpty())) {
+                if (required) {
+                    throw new HttpRequestException("'" + name + "' query parameter is required.", BAD_REQUEST);
+                }
+                else {
+                    return null;
+                }
+            }
+
+            return mapper.apply(strings.get(0));
         }
     }
 
