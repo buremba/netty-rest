@@ -50,7 +50,8 @@ public class RouteMatcher
             path = path.substring(0, lastIndex);
         }
 
-        final HttpRequestHandler handler = routes.get(new PatternBinding(request.getMethod(), path));
+        HttpMethod method = request.getMethod();
+        final HttpRequestHandler handler = routes.get(new PatternBinding(method, path));
         if (handler != null) {
             if (handler instanceof WebSocketService) {
                 request.context().attr(PATH).set(path);
@@ -59,7 +60,7 @@ public class RouteMatcher
         }
         else {
             for (Map.Entry<PatternBinding, HttpRequestHandler> prefixRoute : prefixRoutes) {
-                if (path.startsWith(prefixRoute.getKey().pattern)) {
+                if (method.equals(prefixRoute.getKey().method) && path.startsWith(prefixRoute.getKey().pattern)) {
                     prefixRoute.getValue().handle(request);
                     return;
                 }
