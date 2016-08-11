@@ -135,7 +135,7 @@ public class HttpServer
             HttpServerBuilder.ExceptionHandler exceptionHandler, Map<String, IRequestParameterFactory> customParameters,
             BiConsumer<Method, Operation> swaggerOperationConsumer, boolean debugMode, boolean proxyProtocol)
     {
-        this.routeMatcher = new RouteMatcher(debugMode);
+        this.routeMatcher = new RouteMatcher();
         this.preProcessors = preProcessors;
         this.workerGroup = requireNonNull(eventLoopGroup, "eventLoopGroup is null");
         this.swagger = requireNonNull(swagger, "swagger is null");
