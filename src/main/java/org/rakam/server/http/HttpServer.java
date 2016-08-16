@@ -631,7 +631,7 @@ public class HttpServer
             if (apply instanceof Response) {
                 Response responseData = (Response) apply;
                 byte[] bytes = mapper.writeValueAsBytes(responseData.getData());
-                response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(bytes));
+                response = new DefaultFullHttpResponse(HTTP_1_1, responseData.getStatus(), Unpooled.wrappedBuffer(bytes));
                 response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
 
                 if (responseData.getCookies() != null) {

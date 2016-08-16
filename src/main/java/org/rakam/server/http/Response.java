@@ -17,6 +17,11 @@ public class Response<T> {
         this.status = status;
     }
 
+    public HttpResponseStatus getStatus()
+    {
+        return status;
+    }
+
     public Response addCookie(DefaultCookie cookie) {
         if(cookies == null) {
             cookies = Lists.newArrayList();
