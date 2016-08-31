@@ -49,9 +49,12 @@ public class HttpServerHandler
         }
 
         if (msg instanceof HttpRequest) {
-            if(msg instanceof HttpObject) {
-                if(((HttpRequest) msg).getDecoderResult().isFailure()) {
+            if (msg instanceof HttpObject) {
+                if (((HttpRequest) msg).getDecoderResult().isFailure()) {
                     Throwable cause = ((HttpRequest) msg).getDecoderResult().cause();
+                    if (request == null) {
+                        request = createRequest(ctx);
+                    }
                     HttpServer.returnError(request, cause.getMessage(), BAD_REQUEST);
                 }
             }
