@@ -33,6 +33,7 @@ public class HttpServerBuilder {
     private ExceptionHandler exceptionHandler;
     private Map<String, IRequestParameterFactory> customRequestParameters;
     private BiConsumer<Method, Operation> swaggerOperationConsumer;
+    private boolean useEpoll = true;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices) {
         this.httpServices = httpServices;
@@ -96,6 +97,11 @@ public class HttpServerBuilder {
         return this;
     }
 
+    public HttpServerBuilder setUseEpollIfPossible(boolean useEpoll) {
+        this.useEpoll = useEpoll;
+        return this;
+    }
+
     public HttpServerBuilder setExceptionHandler(ExceptionHandler exceptionHandler) {
         this.exceptionHandler = exceptionHandler;
         return this;
@@ -108,7 +114,7 @@ public class HttpServerBuilder {
 
     public HttpServer build() {
         if (eventLoopGroup == null) {
-            eventLoopGroup = Epoll.isAvailable() ? new EpollEventLoopGroup() : new NioEventLoopGroup();
+            eventLoopGroup = useEpoll ? new EpollEventLoopGroup() : new NioEventLoopGroup();
         }
         if (swagger == null) {
             swagger = new Swagger();
@@ -132,6 +138,7 @@ public class HttpServerBuilder {
                 customRequestParameters,
                 swaggerOperationConsumer,
                 debugMode,
+                useEpoll,
                 proxyProtocol);
     }
 

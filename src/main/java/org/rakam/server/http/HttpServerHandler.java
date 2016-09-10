@@ -49,6 +49,9 @@ public class HttpServerHandler
         }
 
         if (msg instanceof HttpRequest) {
+            this.request = createRequest(ctx);
+            this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
+
             if (msg instanceof HttpObject) {
                 if (((HttpRequest) msg).getDecoderResult().isFailure()) {
                     Throwable cause = ((HttpRequest) msg).getDecoderResult().cause();
@@ -59,8 +62,6 @@ public class HttpServerHandler
                 }
             }
 
-            this.request = createRequest(ctx);
-            this.request.setRequest((io.netty.handler.codec.http.HttpRequest) msg);
             routes.handle(request);
         }
         else if (msg instanceof LastHttpContent) {

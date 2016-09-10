@@ -115,6 +115,7 @@ public class HttpServer
     private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     private final Map<String, IRequestParameterFactory> customParameters;
     private final BiConsumer<Method, Operation> swaggerOperationConsumer;
+    private final boolean useEpoll;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -133,7 +134,7 @@ public class HttpServer
             List<PreprocessorEntry> preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
             ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
             HttpServerBuilder.ExceptionHandler exceptionHandler, Map<String, IRequestParameterFactory> customParameters,
-            BiConsumer<Method, Operation> swaggerOperationConsumer, boolean debugMode, boolean proxyProtocol)
+            BiConsumer<Method, Operation> swaggerOperationConsumer, boolean debugMode,  boolean useEpoll, boolean proxyProtocol)
     {
         this.routeMatcher = new RouteMatcher();
         this.preProcessors = preProcessors;
@@ -148,10 +149,11 @@ public class HttpServer
         this.postProcessors = postProcessors;
         this.proxyProtocol = proxyProtocol;
 
-        this.bossGroup = Epoll.isAvailable() ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
+        this.bossGroup = useEpoll ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overriddenMappings);
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
         routeMatcher.add(GET, "/api/swagger.json", this::swaggerApiHandle);
+        this.useEpoll = useEpoll && Epoll.isAvailable();
     }
 
     public void setNotFoundHandler(HttpRequestHandler handler)
@@ -748,7 +750,7 @@ public class HttpServer
         }
 
         b.group(bossGroup, workerGroup)
-                .channel(Epoll.isAvailable() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
+                .channel(useEpoll ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
                 .handler(new LoggingHandler(LogLevel.INFO))
                 .childHandler(new ChannelInitializer<SocketChannel>()
                 {
