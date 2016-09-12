@@ -18,6 +18,8 @@ import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.util.List;
@@ -37,9 +39,9 @@ public class RakamHttpRequest
     private final ChannelHandlerContext ctx;
     private HttpRequest request;
     private FullHttpResponse response;
-    private Consumer<String> bodyHandler;
+    private Consumer<InputStream> bodyHandler;
     private Set<Cookie> cookies;
-    private String body;
+    private InputStream body;
     private QueryStringDecoder qs;
     private String remoteAddress;
 
@@ -116,7 +118,7 @@ public class RakamHttpRequest
         return request.getDecoderResult();
     }
 
-    protected Consumer<String> getBodyHandler()
+    protected Consumer<InputStream> getBodyHandler()
     {
         return bodyHandler;
     }
@@ -127,7 +129,7 @@ public class RakamHttpRequest
         request.setDecoderResult(result);
     }
 
-    public void bodyHandler(Consumer<String> function)
+    public void bodyHandler(Consumer<InputStream> function)
     {
         bodyHandler = function;
     }
@@ -193,6 +195,14 @@ public class RakamHttpRequest
 
     public void end()
     {
+        if(body != null) {
+            try {
+                body.close();
+            }
+            catch (IOException e) {
+                //
+            }
+        }
         if (response == null) {
             response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(new byte[0]));
         }
@@ -214,7 +224,7 @@ public class RakamHttpRequest
         }
     }
 
-    void handleBody(String body)
+    void handleBody(InputStream body)
     {
         this.body = body;
         if (bodyHandler != null) {
@@ -222,7 +232,7 @@ public class RakamHttpRequest
         }
     }
 
-    String getBody()
+    InputStream getBody()
     {
         return body;
     }
