@@ -138,7 +138,7 @@ public class HttpServerBuilder {
                 customRequestParameters,
                 swaggerOperationConsumer,
                 debugMode,
-                useEpoll,
+                useEpoll && Epoll.isAvailable(),
                 proxyProtocol);
     }
 
