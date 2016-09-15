@@ -634,7 +634,6 @@ public class HttpServer
                 Response responseData = (Response) apply;
                 byte[] bytes = mapper.writeValueAsBytes(responseData.getData());
                 response = new DefaultFullHttpResponse(HTTP_1_1, responseData.getStatus(), Unpooled.wrappedBuffer(bytes));
-                response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
 
                 if (responseData.getCookies() != null) {
                     response.headers().add(SET_COOKIE, STRICT.encode(responseData.getCookies()));
@@ -649,6 +648,8 @@ public class HttpServer
             LOGGER.error(e, "Couldn't serialize returned object");
             throw new RuntimeException("couldn't serialize object", e);
         }
+        response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
+
         applyPostProcessors(response, postProcessors);
         request.response(response).end();
     }
