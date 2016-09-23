@@ -238,7 +238,7 @@ public class HttpServerHandler
         {
             if (cursor.capacity() == position) {
                 if (arrays.size() == cursorPos) {
-                    throw new IOException();
+                    return -1;
                 }
                 cursor = arrays.get(cursorPos++);
                 position = 1;
