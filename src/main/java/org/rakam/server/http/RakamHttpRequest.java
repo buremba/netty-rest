@@ -3,6 +3,7 @@ package org.rakam.server.http;
 import com.google.common.collect.ImmutableSet;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.DecoderResult;
@@ -195,7 +196,7 @@ public class RakamHttpRequest
 
     public void end()
     {
-        if(body != null) {
+        if (body != null) {
             try {
                 body.close();
             }
@@ -264,19 +265,20 @@ public class RakamHttpRequest
     public class StreamResponse
     {
         private final ChannelHandlerContext ctx;
+        private ChannelFuture lastBufferData = null;
 
         public StreamResponse(ChannelHandlerContext ctx)
         {
             this.ctx = ctx;
         }
 
-        public StreamResponse send(String event, String data)
+        public synchronized StreamResponse send(String event, String data)
         {
             if (ctx.isRemoved()) {
                 throw new IllegalStateException();
             }
             ByteBuf msg = Unpooled.wrappedBuffer(("event:" + event + "\ndata: " + data.replaceAll("\n", "\ndata: ") + "\n\n").getBytes(UTF_8));
-            ctx.writeAndFlush(msg);
+            lastBufferData = ctx.writeAndFlush(msg);
             return this;
         }
 
@@ -290,9 +292,11 @@ public class RakamHttpRequest
             ctx.channel().closeFuture().addListener(future -> runnable.run());
         }
 
-        public void end()
+        public synchronized void end()
         {
-            ctx.close().awaitUninterruptibly();
+            if (lastBufferData != null && !ctx.isRemoved()) {
+                ctx.close().awaitUninterruptibly();
+            }
         }
     }
 }
