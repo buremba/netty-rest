@@ -16,6 +16,7 @@ import io.netty.util.AttributeKey;
 import io.netty.util.CharsetUtil;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.internal.ConcurrentSet;
+import org.rakam.server.http.HttpServerBuilder.ExceptionHandler;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -27,20 +28,23 @@ import java.util.List;
 import static io.netty.handler.codec.http.HttpResponseStatus.BAD_REQUEST;
 import static io.netty.handler.codec.http.HttpResponseStatus.CONTINUE;
 import static io.netty.handler.codec.http.HttpResponseStatus.INTERNAL_SERVER_ERROR;
+import static io.netty.handler.codec.http.HttpResponseStatus.REQUEST_ENTITY_TOO_LARGE;
 import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 
 public class HttpServerHandler
         extends ChannelInboundHandlerAdapter
 {
-    private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
+    private final ExceptionHandler uncaughtExceptionHandler;
+    private final long maximumBody;
     protected RakamHttpRequest request;
     RouteMatcher routes;
     private List<ByteBuf> body = new ArrayList<>(2);
     private static InputStream EMPTY_BODY = new ByteArrayInputStream(new byte[] {});
 
-    public HttpServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler)
+    public HttpServerHandler(RouteMatcher routes, ExceptionHandler uncaughtExceptionHandler, long maximumBody)
     {
         this.routes = routes;
+        this.maximumBody = maximumBody;
         this.uncaughtExceptionHandler = uncaughtExceptionHandler;
     }
 
@@ -106,6 +110,16 @@ public class HttpServerHandler
             HttpContent chunk = (HttpContent) msg;
             if (chunk.content().isReadable()) {
                 ByteBuf content = chunk.content();
+                if (maximumBody > -1) {
+                    long value = chunk.content().capacity();
+                    for (ByteBuf byteBuf : body) {
+                        value += byteBuf.capacity();
+                    }
+                    if (value > maximumBody) {
+                        HttpServer.returnError(request, "Body is too large.", REQUEST_ENTITY_TOO_LARGE);
+                        ctx.close();
+                    }
+                }
                 body.add(content);
                 content.retain();
             }
@@ -164,7 +178,9 @@ public class HttpServerHandler
         }
     }
 
-    private static class ReferenceCountedByteBufInputStream extends InputStream {
+    private static class ReferenceCountedByteBufInputStream
+            extends InputStream
+    {
 
         private final ByteBuf buffer;
 

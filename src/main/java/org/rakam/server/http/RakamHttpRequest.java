@@ -294,8 +294,14 @@ public class RakamHttpRequest
 
         public synchronized void end()
         {
-            if (lastBufferData != null && !ctx.isRemoved()) {
-                ctx.close().awaitUninterruptibly();
+            if(ctx.isRemoved()) {
+                return;
+            }
+
+            if (lastBufferData != null) {
+                lastBufferData.addListener(ChannelFutureListener.CLOSE);
+            } else {
+                ctx.close();
             }
         }
     }

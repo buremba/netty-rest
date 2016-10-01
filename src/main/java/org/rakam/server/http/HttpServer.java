@@ -116,6 +116,7 @@ public class HttpServer
     private final Map<String, IRequestParameterFactory> customParameters;
     private final BiConsumer<Method, Operation> swaggerOperationConsumer;
     private final boolean useEpoll;
+    private final long maximumBodySize;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -129,12 +130,20 @@ public class HttpServer
         DEFAULT_MAPPER = new ObjectMapper();
     }
 
-    HttpServer(Set<HttpService> httpServicePlugins, Set<WebSocketService> websocketServices,
+    HttpServer(Set<HttpService> httpServicePlugins,
+            Set<WebSocketService> websocketServices,
             Swagger swagger, EventLoopGroup eventLoopGroup,
-            List<PreprocessorEntry> preProcessors, ImmutableList<PostProcessorEntry> postProcessors,
-            ObjectMapper mapper, Map<Class, PrimitiveType> overriddenMappings,
-            HttpServerBuilder.ExceptionHandler exceptionHandler, Map<String, IRequestParameterFactory> customParameters,
-            BiConsumer<Method, Operation> swaggerOperationConsumer, boolean debugMode,  boolean useEpoll, boolean proxyProtocol)
+            List<PreprocessorEntry> preProcessors,
+            ImmutableList<PostProcessorEntry> postProcessors,
+            ObjectMapper mapper,
+            Map<Class, PrimitiveType> overriddenMappings,
+            HttpServerBuilder.ExceptionHandler exceptionHandler,
+            Map<String, IRequestParameterFactory> customParameters,
+            BiConsumer<Method, Operation> swaggerOperationConsumer,
+            boolean debugMode,
+            boolean useEpoll,
+            boolean proxyProtocol,
+            long maximumBodySize)
     {
         this.routeMatcher = new RouteMatcher();
         this.preProcessors = preProcessors;
@@ -148,6 +157,7 @@ public class HttpServer
         } : exceptionHandler;
         this.postProcessors = postProcessors;
         this.proxyProtocol = proxyProtocol;
+        this.maximumBodySize = maximumBodySize;
 
         this.bossGroup = useEpoll ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overriddenMappings);
@@ -766,7 +776,7 @@ public class HttpServer
                             handler = new HaProxyBackendServerHandler(routeMatcher, uncaughtExceptionHandler);
                         }
                         else {
-                            handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler);
+                            handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler, maximumBodySize);
                         }
 
                         // make it configurable
