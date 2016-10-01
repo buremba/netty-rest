@@ -773,7 +773,7 @@ public class HttpServer
                         HttpServerHandler handler;
                         if (proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                            handler = new HaProxyBackendServerHandler(routeMatcher, uncaughtExceptionHandler);
+                            handler = new HaProxyBackendServerHandler(routeMatcher, uncaughtExceptionHandler, maximumBodySize);
                         }
                         else {
                             handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler, maximumBodySize);
