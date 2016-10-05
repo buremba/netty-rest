@@ -702,7 +702,7 @@ public class SwaggerReader
         String name, reference;
         if (!apiOperation.request().equals(Void.class)) {
             Class<?> clazz = apiOperation.request();
-            if (clazz.getSuperclass().equals(TypeToken.class)) {
+            if (clazz.getSuperclass() != null && clazz.getSuperclass().equals(TypeToken.class)) {
                 explicitType = ((ParameterizedType) clazz.getGenericSuperclass()).getActualTypeArguments()[0];
                 parameters = null;
                 name = null;
