@@ -799,6 +799,9 @@ public class SwaggerReader
     {
         // if the parameter has a generic type, it will be read as Object
         // so we need to find the actual implementation and return that type.
+
+        // the generic type may not come from the HttpService class, if it's not keep track of it:
+        // ((TypeVariableImpl)parameters[2].getParameterizedType()).getGenericDeclaration().getTypeParameters()[0].getBounds()[0]
         if (parameterizedType instanceof TypeVariableImpl) {
             TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
             Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();

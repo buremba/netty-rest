@@ -79,7 +79,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                     }
                 }
             } catch (Throwable e) {
-                httpServer.requestError(e, request);
+                httpServer.requestError(e, request, postProcessors);
                 return;
             }
 
@@ -88,7 +88,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 try {
                     apply = (CompletionStage) function.apply(service, json);
                 } catch (Throwable e) {
-                    httpServer.requestError(e, request);
+                    httpServer.requestError(e, request, postProcessors);
                     return;
                 }
                 httpServer.handleAsyncJsonRequest(mapper, request, apply, postProcessors);

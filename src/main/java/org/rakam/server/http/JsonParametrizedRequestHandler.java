@@ -102,7 +102,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                 }
             }
         } catch (Throwable e) {
-            httpServer.requestError(e, request);
+            httpServer.requestError(e, request, postProcessors);
             return;
         }
 
@@ -114,7 +114,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
             try {
                 value = param.extract(node, request);
             } catch (Exception e) {
-                httpServer.requestError(e, request);
+                httpServer.requestError(e, request, postProcessors);
                 return;
             }
 
@@ -125,7 +125,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         try {
             invoke = methodHandle.invokeWithArguments(values);
         } catch (Throwable e) {
-            httpServer.requestError(e, request);
+            httpServer.requestError(e, request, postProcessors);
             return;
         }
 

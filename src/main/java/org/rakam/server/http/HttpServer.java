@@ -315,7 +315,7 @@ public class HttpServer
                     invoke = lambda.apply(service);
                 }
                 catch (Throwable e) {
-                    requestError(e.getCause(), request);
+                    requestError(e.getCause(), request, postProcessors);
                     return;
                 }
 
@@ -386,6 +386,7 @@ public class HttpServer
     private HttpRequestHandler generateRawRequestHandler(HttpService service, Method method)
     {
         List<RequestPreprocessor> requestPreprocessors = getPreprocessorRequest(method);
+        List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         // we don't need to pass service object is the method is static.
         // it's also better for performance since there will be only one object to send the stack.
@@ -401,7 +402,7 @@ public class HttpServer
                     lambda.accept(request);
                 }
                 catch (Exception e) {
-                    requestError(e, request);
+                    requestError(e, request, postProcessors);
                 }
             };
         }
@@ -413,7 +414,7 @@ public class HttpServer
                     lambda.accept(service, request);
                 }
                 catch (Exception e) {
-                    requestError(e, request);
+                    requestError(e, request, postProcessors);
                 }
             };
         }
@@ -435,7 +436,7 @@ public class HttpServer
                     }
                 }
                 catch (Throwable e) {
-                    requestError(e, request);
+                    requestError(e, request, postProcessors);
                     return;
                 }
 
@@ -445,7 +446,7 @@ public class HttpServer
                         apply = (CompletionStage) function.apply(service);
                     }
                     catch (Exception e) {
-                        requestError(e.getCause(), request);
+                        requestError(e.getCause(), request, postProcessors);
                         return;
                     }
                     handleAsyncJsonRequest(mapper, request, apply, postProcessors);
@@ -476,7 +477,7 @@ public class HttpServer
                     }
                 }
                 catch (Throwable e) {
-                    requestError(e, request);
+                    requestError(e, request, postProcessors);
                     return;
                 }
 
@@ -484,8 +485,13 @@ public class HttpServer
                 Object[] objects = new Object[parameterSize];
 
                 objects[0] = service;
-                for (int i = 0; i < parameters.length; i++) {
-                    objects[i + 1] = parameters[i].extract(json, request);
+                try {
+                    for (int i = 0; i < parameters.length; i++) {
+                        objects[i + 1] = parameters[i].extract(json, request);
+                    }
+                }
+                catch (Exception e) {
+                    requestError(e, request, null);
                 }
 
                 if (isAsync) {
@@ -494,7 +500,7 @@ public class HttpServer
                         apply = (CompletionStage) methodHandle.invokeWithArguments(objects);
                     }
                     catch (Throwable e) {
-                        requestError(e.getCause(), request);
+                        requestError(e.getCause(), request, postProcessors);
                         return;
                     }
                     handleAsyncJsonRequest(mapper, request, apply, postProcessors);
@@ -660,7 +666,9 @@ public class HttpServer
         }
         response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
 
-        applyPostProcessors(response, postProcessors);
+        if (postProcessors != null) {
+            applyPostProcessors(response, postProcessors);
+        }
         request.response(response).end();
     }
 
@@ -688,15 +696,7 @@ public class HttpServer
                 }
                 uncaughtExceptionHandler.handle(request, ex);
 
-                if (ex instanceof HttpRequestException) {
-                    HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-                    returnJsonResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode), postProcessors);
-                }
-                else {
-                    returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR,
-                            errorMessage(INTERNAL_SERVER_ERROR.reasonPhrase(), INTERNAL_SERVER_ERROR), postProcessors);
-                    LOGGER.error(ex, "Error while processing request");
-                }
+                requestError(ex, request, postProcessors);
             }
             else {
                 returnJsonResponse(mapper, request, OK, result, postProcessors);
@@ -780,7 +780,7 @@ public class HttpServer
                         }
 
                         // make it configurable
-                        p.addLast("httpCodec", new HttpServerCodec(4096, 36192, 36192));
+                        p.addLast("httpCodec", new HttpServerCodec(36192 * 2, 36192 * 8, 36192 * 16));
                         if (debugMode) {
                             p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, handler));
                         }
@@ -840,17 +840,17 @@ public class HttpServer
         }
     }
 
-    void requestError(Throwable ex, RakamHttpRequest request)
+    void requestError(Throwable ex, RakamHttpRequest request, List<ResponsePostProcessor> postProcessors)
     {
         uncaughtExceptionHandler.handle(request, ex);
-
         if (ex instanceof HttpRequestException) {
             HttpResponseStatus statusCode = ((HttpRequestException) ex).getStatusCode();
-            returnError(request, ex.getMessage(), statusCode);
+            returnJsonResponse(mapper, request, statusCode, errorMessage(ex.getMessage(), statusCode), postProcessors);
         }
         else {
-            LOGGER.error(ex, "An uncaught exception raised while processing request.");
-            returnError(request, "Error processing request.", INTERNAL_SERVER_ERROR);
+            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR,
+                    errorMessage("Error processing request.", INTERNAL_SERVER_ERROR), postProcessors);
+            LOGGER.error(ex, "Error while processing request");
         }
     }
 
