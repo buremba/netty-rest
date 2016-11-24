@@ -492,6 +492,7 @@ public class HttpServer
                 }
                 catch (Exception e) {
                     requestError(e, request, null);
+                    return;
                 }
 
                 if (isAsync) {
