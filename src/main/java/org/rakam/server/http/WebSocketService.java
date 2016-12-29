@@ -27,12 +27,12 @@ public abstract class WebSocketService implements HttpRequestHandler {
 
     public void handle(ChannelHandlerContext ctx, WebSocketFrame frame) {
         if (frame instanceof CloseWebSocketFrame) {
-            handshaker.close(ctx.channel(), (CloseWebSocketFrame) frame.retain());
+            handshaker.close(ctx.channel(), (CloseWebSocketFrame) frame);
             onClose(ctx);
             return;
         }
         if (frame instanceof PingWebSocketFrame) {
-            ctx.channel().write(new PongWebSocketFrame(frame.content().retain()));
+            ctx.channel().write(new PongWebSocketFrame(frame.content()));
             return;
         }
         if (!(frame instanceof TextWebSocketFrame)) {

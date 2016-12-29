@@ -1,6 +1,7 @@
 package org.rakam.server.http;
 
 import com.google.common.collect.ImmutableSet;
+import io.airlift.log.Logger;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.ChannelFuture;
@@ -37,6 +38,9 @@ import static io.netty.util.CharsetUtil.UTF_8;
 public class RakamHttpRequest
         implements HttpRequest
 {
+    private final static Logger LOGGER = Logger.get(HttpServer.class);
+    private final static InputStream REQUEST_DONE_STREAM = new InvalidInputStream();
+
     private final ChannelHandlerContext ctx;
     private HttpRequest request;
     private FullHttpResponse response;
@@ -201,9 +205,12 @@ public class RakamHttpRequest
                 body.close();
             }
             catch (IOException e) {
-                //
+                LOGGER.error(e);
             }
+        } else {
+            body = REQUEST_DONE_STREAM;
         }
+
         if (response == null) {
             response = new DefaultFullHttpResponse(HTTP_1_1, OK, Unpooled.wrappedBuffer(new byte[0]));
         }
@@ -227,6 +234,14 @@ public class RakamHttpRequest
 
     void handleBody(InputStream body)
     {
+        if(body == REQUEST_DONE_STREAM) {
+            try {
+                body.close();
+            }
+            catch (IOException e) {
+                LOGGER.error(e);
+            }
+        }
         this.body = body;
         if (bodyHandler != null) {
             bodyHandler.accept(body);
@@ -303,6 +318,21 @@ public class RakamHttpRequest
             } else {
                 ctx.close();
             }
+        }
+    }
+
+    // if request.end() is called before Netty fetches the body data, handleBody()
+    // will be called after request.end() and it needs to release the buffer immediately.
+    // this class is used to identify if the request is ended.
+    private static class InvalidInputStream
+            extends InputStream
+    {
+
+        @Override
+        public int read()
+                throws IOException
+        {
+            throw new UnsupportedOperationException();
         }
     }
 }

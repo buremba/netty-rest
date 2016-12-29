@@ -77,18 +77,18 @@ public class HttpServerHandler
         else if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
             try {
-                if (chunk.content().isReadable()) {
+                ByteBuf content = chunk.content();
+                if (content.isReadable()) {
                     InputStream input;
                     if (body.size() == 0) {
-                        input = new ReferenceCountedByteBufInputStream(chunk.content());
+                        input = new ReferenceCountedByteBufInputStream(content);
                     }
                     else {
-                        body.add(chunk.content());
+                        body.add(content);
                         input = new ChainByteArrayInputStream(body);
                         body = new ArrayList<>(2);
                     }
 
-                    chunk.retain();
                     request.handleBody(input);
                 }
                 else {
@@ -104,10 +104,10 @@ public class HttpServerHandler
         }
         else if (msg instanceof HttpContent) {
             HttpContent chunk = (HttpContent) msg;
-            if (chunk.content().isReadable()) {
-                ByteBuf content = chunk.content();
+            ByteBuf content = chunk.content();
+            if (content.isReadable()) {
                 if (maximumBody > -1) {
-                    long value = chunk.content().capacity();
+                    long value = content.capacity();
                     for (ByteBuf byteBuf : body) {
                         value += byteBuf.capacity();
                     }
@@ -116,8 +116,8 @@ public class HttpServerHandler
                         ctx.close();
                     }
                 }
+
                 body.add(content);
-                content.retain();
             }
         }
         else if (msg instanceof WebSocketFrame) {
@@ -272,9 +272,9 @@ public class HttpServerHandler
         public void close()
                 throws IOException
         {
-            arrays.forEach(ReferenceCounted::release);
+            for (ByteBuf buffer : arrays) {
+                buffer.release();
+            }
         }
     }
 }
-
-

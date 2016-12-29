@@ -134,7 +134,7 @@ public interface IRequestParameter<T>
                 }
                 catch (IllegalArgumentException e) {
                     throw new HttpRequestException(name +
-                            " body parameter cannot be cast to " + type.toString(), BAD_REQUEST);
+                            " body parameter cannot be cast to " + type.toString() + ": "+e.getMessage(), BAD_REQUEST);
                 }
             }
 
