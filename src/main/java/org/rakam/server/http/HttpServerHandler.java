@@ -89,6 +89,7 @@ public class HttpServerHandler
                         body = new ArrayList<>(2);
                     }
 
+                    content.retain();
                     request.handleBody(input);
                 }
                 else {
@@ -116,7 +117,7 @@ public class HttpServerHandler
                         ctx.close();
                     }
                 }
-
+                content.retain();
                 body.add(content);
             }
         }
