@@ -1,6 +1,7 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,7 +16,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.ChannelOption;
 import io.netty.channel.ChannelPipeline;
@@ -40,7 +40,6 @@ import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
 import org.rakam.server.http.HttpServerBuilder.IRequestParameterFactory;
-import org.rakam.server.http.HttpServerHandler.DebugHttpServerHandler;
 import org.rakam.server.http.IRequestParameter.BodyParameter;
 import org.rakam.server.http.IRequestParameter.HeaderParameter;
 import org.rakam.server.http.annotations.ApiParam;
@@ -54,10 +53,16 @@ import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
 import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.inject.Named;
+import javax.management.InstanceAlreadyExistsException;
+import javax.management.MBeanRegistrationException;
+import javax.management.MBeanServer;
+import javax.management.MalformedObjectNameException;
+import javax.management.NotCompliantMBeanException;
+import javax.management.ObjectName;
 import javax.ws.rs.Path;
 
-import java.io.UnsupportedEncodingException;
 import java.lang.invoke.MethodHandle;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
@@ -75,6 +80,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -93,7 +99,6 @@ import static io.netty.util.CharsetUtil.UTF_8;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
-import static org.rakam.server.http.HttpServerHandler.DebugHttpServerHandler.START_TIME;
 import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer
@@ -112,11 +117,12 @@ public class HttpServer
     private final boolean debugMode;
     private final boolean proxyProtocol;
     private final List<PostProcessorEntry> postProcessors;
-    private final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
+    final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
     private final Map<String, IRequestParameterFactory> customParameters;
     private final BiConsumer<Method, Operation> swaggerOperationConsumer;
     private final boolean useEpoll;
-    private final long maximumBodySize;
+    protected final Map<RakamHttpRequest, Long> processingRequests;
+    protected final long maximumBodySize;
     private Channel channel;
 
     private final ImmutableMap<Class, PrimitiveType> swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder()
@@ -125,6 +131,7 @@ public class HttpServer
             .put(Instant.class, PrimitiveType.DATE_TIME)
             .put(ObjectNode.class, PrimitiveType.OBJECT)
             .build();
+    protected ConcurrentSet activeChannels;
 
     static {
         DEFAULT_MAPPER = new ObjectMapper();
@@ -164,6 +171,7 @@ public class HttpServer
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
         routeMatcher.add(GET, "/api/swagger.json", this::swaggerApiHandle);
         this.useEpoll = useEpoll && Epoll.isAvailable();
+        this.processingRequests = new ConcurrentHashMap<>();
     }
 
     public void setNotFoundHandler(HttpRequestHandler handler)
@@ -184,6 +192,16 @@ public class HttpServer
         }
 
         request.response(content).end();
+    }
+
+    public void markProcessing(RakamHttpRequest request)
+    {
+        processingRequests.put(request, System.currentTimeMillis());
+    }
+
+    public void unmarkProcessing(RakamHttpRequest request)
+    {
+        processingRequests.remove(request);
     }
 
     private void registerWebSocketPaths(Set<WebSocketService> webSocketServices)
@@ -718,47 +736,65 @@ public class HttpServer
         channel.closeFuture().sync(); // Wait until the channel is closed.
     }
 
+    public static class Request
+    {
+        private final String uri;
+        private final List<Map.Entry<String, String>> entries;
+        private final String method;
+        private final String remoteAddress;
+        private final long runningTime;
+
+        public Request(String method, String uri, List<Map.Entry<String, String>> entries, String remoteAddress, long startTime)
+        {
+            this.method = method;
+            this.uri = uri;
+            this.remoteAddress = remoteAddress;
+            this.entries = entries;
+            this.runningTime = System.currentTimeMillis() - startTime;
+        }
+
+        public String getUri()
+        {
+            return uri;
+        }
+
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        public List<Map.Entry<String, String>> getEntries()
+        {
+            return entries;
+        }
+
+        public String getMethod()
+        {
+            return method;
+        }
+
+        public String getRemoteAddress()
+        {
+            return remoteAddress;
+        }
+
+        public long getRunningTime()
+        {
+            return runningTime;
+        }
+    }
+
     private ChannelFuture bindInternal(String host, int port)
             throws InterruptedException
     {
         ServerBootstrap b = new ServerBootstrap();
         b.option(ChannelOption.SO_BACKLOG, 1024);
 
-        ConcurrentSet<ChannelHandlerContext> activeChannels = new ConcurrentSet();
+        activeChannels = new ConcurrentSet();
 
-        if (debugMode) {
-            routeMatcher.add(GET, "/active-client/count",
-                    request -> request.response(Integer.toString(activeChannels.size())).end());
-
-            routeMatcher.add(GET, "/active-client/list", request -> {
-                int now = (int) (System.currentTimeMillis() / 1000);
-
-                String collect = activeChannels.stream().map(c -> {
-                    String s = c.channel().remoteAddress().toString();
-                    Integer integer = c.attr(START_TIME).get();
-                    if (integer != null) {
-                        s += " " + (now - integer) + "s ";
-                    }
-                    else {
-                        s += " ? ";
-                    }
-                    s += c.attr(RouteMatcher.PATH).get();
-                    if (request.context().channel().equals(c)) {
-                        s += " *";
-                    }
-                    return s;
-                }).collect(Collectors.joining("\n"));
-
-                try {
-                    DefaultFullHttpResponse response = new DefaultFullHttpResponse(HTTP_1_1,
-                            OK, Unpooled.wrappedBuffer(collect.getBytes("UTF-8")));
-                    response.headers().set(CONTENT_TYPE, "text/plain");
-                    request.response(response).end();
-                }
-                catch (UnsupportedEncodingException e) {
-                    throw Throwables.propagate(e);
-                }
-            });
+        MBeanServer mbs = ManagementFactory.getPlatformMBeanServer();
+        try {
+            ObjectName serverName = new ObjectName(SHttpServer.class.getPackage().getName() + ":name=" + SHttpServer.class.getSimpleName());
+            mbs.registerMBean(new SHttpServer(this), serverName);
+        }
+        catch (InstanceAlreadyExistsException | MalformedObjectNameException | NotCompliantMBeanException | MBeanRegistrationException e) {
+            LOGGER.warn(e, "Error while registering MBean");
         }
 
         b.group(bossGroup, workerGroup)
@@ -774,20 +810,15 @@ public class HttpServer
                         HttpServerHandler handler;
                         if (proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                            handler = new HaProxyBackendServerHandler(routeMatcher, uncaughtExceptionHandler, maximumBodySize);
+                            handler = new HaProxyBackendServerHandler(activeChannels, HttpServer.this);
                         }
                         else {
-                            handler = new HttpServerHandler(routeMatcher, uncaughtExceptionHandler, maximumBodySize);
+                            handler = new HttpServerHandler(activeChannels, HttpServer.this);
                         }
 
                         // make it configurable
                         p.addLast("httpCodec", new HttpServerCodec(36192 * 2, 36192 * 8, 36192 * 16));
-                        if (debugMode) {
-                            p.addLast("serverHandler", new DebugHttpServerHandler(activeChannels, handler));
-                        }
-                        else {
-                            p.addLast("serverHandler", handler);
-                        }
+                        p.addLast("serverHandler", handler);
                     }
                 });
 

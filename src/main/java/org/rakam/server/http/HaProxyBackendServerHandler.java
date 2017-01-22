@@ -3,13 +3,14 @@ package org.rakam.server.http;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.util.AttributeKey;
+import io.netty.util.internal.ConcurrentSet;
 
 public class HaProxyBackendServerHandler extends HttpServerHandler {
     AttributeKey<String> CLIENT_IP = AttributeKey.valueOf("ip");
 
 
-    public HaProxyBackendServerHandler(RouteMatcher routes, HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler, long maximumBodySize) {
-        super(routes, uncaughtExceptionHandler, maximumBodySize);
+    public HaProxyBackendServerHandler(ConcurrentSet activeChannels, HttpServer httpServer) {
+        super(activeChannels, httpServer);
     }
 
     @Override

@@ -36,7 +36,7 @@ import static io.netty.handler.codec.http.cookie.ServerCookieDecoder.STRICT;
 import static io.netty.util.CharsetUtil.UTF_8;
 
 public class RakamHttpRequest
-        implements HttpRequest
+        implements HttpRequest, Comparable
 {
     private final static Logger LOGGER = Logger.get(HttpServer.class);
     private final static InputStream REQUEST_DONE_STREAM = new InvalidInputStream();
@@ -44,6 +44,13 @@ public class RakamHttpRequest
     private final ChannelHandlerContext ctx;
     private HttpRequest request;
     private FullHttpResponse response;
+
+    @Override
+    public boolean equals(Object o)
+    {
+        return o == this;
+    }
+
     private Consumer<InputStream> bodyHandler;
     private Set<Cookie> cookies;
     private InputStream body;
@@ -275,6 +282,12 @@ public class RakamHttpRequest
     void setRemoteAddress(String remoteAddress)
     {
         this.remoteAddress = remoteAddress;
+    }
+
+    @Override
+    public int compareTo(Object o)
+    {
+        return o == null ? -1 : (o == this ? 0 : 1);
     }
 
     public class StreamResponse

@@ -10,10 +10,8 @@ import io.netty.handler.codec.http.HttpObject;
 import io.netty.handler.codec.http.HttpRequest;
 import io.netty.handler.codec.http.LastHttpContent;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
-import io.netty.util.AttributeKey;
 import io.netty.util.ReferenceCounted;
 import io.netty.util.internal.ConcurrentSet;
-import org.rakam.server.http.HttpServerBuilder.ExceptionHandler;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -30,18 +28,18 @@ import static io.netty.handler.codec.http.HttpVersion.HTTP_1_1;
 public class HttpServerHandler
         extends ChannelInboundHandlerAdapter
 {
-    private final ExceptionHandler uncaughtExceptionHandler;
-    private final long maximumBody;
-    protected RakamHttpRequest request;
-    RouteMatcher routes;
-    private List<ByteBuf> body = new ArrayList<>(2);
     private static InputStream EMPTY_BODY = new ByteArrayInputStream(new byte[] {});
 
-    public HttpServerHandler(RouteMatcher routes, ExceptionHandler uncaughtExceptionHandler, long maximumBody)
+    private final HttpServer server;
+    private final ConcurrentSet activeChannels;
+    protected RakamHttpRequest request;
+    private List<ByteBuf> body;
+
+
+    public HttpServerHandler(ConcurrentSet activeChannels, HttpServer server)
     {
-        this.routes = routes;
-        this.maximumBody = maximumBody;
-        this.uncaughtExceptionHandler = uncaughtExceptionHandler;
+        this.server = server;
+        this.activeChannels = activeChannels;
     }
 
     RakamHttpRequest createRequest(ChannelHandlerContext ctx)
@@ -50,10 +48,23 @@ public class HttpServerHandler
     }
 
     @Override
+    public void channelActive(ChannelHandlerContext ctx)
+            throws Exception
+    {
+        activeChannels.add(ctx);
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx)
+            throws Exception
+    {
+        activeChannels.remove(ctx);
+    }
+
+    @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg)
             throws Exception
     {
-
         if (HttpHeaders.is100ContinueExpected(request)) {
             ctx.writeAndFlush(new DefaultFullHttpResponse(HTTP_1_1, CONTINUE));
         }
@@ -72,7 +83,9 @@ public class HttpServerHandler
                 }
             }
 
-            routes.handle(request);
+            server.markProcessing(request);
+            server.routeMatcher.handle(request);
+            server.unmarkProcessing(request);
         }
         else if (msg instanceof LastHttpContent) {
             HttpContent chunk = (HttpContent) msg;
@@ -80,11 +93,18 @@ public class HttpServerHandler
                 ByteBuf content = chunk.content();
                 if (content.isReadable()) {
                     InputStream input;
-                    if (body.size() == 0) {
+                    if (body == null || body.size() == 0) {
                         input = new ReferenceCountedByteBufInputStream(content);
                     }
                     else {
-                        body.add(content);
+                        if (body == null) {
+                            body = new ArrayList<>(1);
+                            body.set(0, content);
+                        }
+                        else {
+                            body.add(content);
+                        }
+
                         input = new ChainByteArrayInputStream(body);
                         body = new ArrayList<>(2);
                     }
@@ -107,72 +127,38 @@ public class HttpServerHandler
             HttpContent chunk = (HttpContent) msg;
             ByteBuf content = chunk.content();
             if (content.isReadable()) {
-                if (maximumBody > -1) {
+                if (server.maximumBodySize > -1) {
                     long value = content.capacity();
                     for (ByteBuf byteBuf : body) {
                         value += byteBuf.capacity();
                     }
-                    if (value > maximumBody) {
+                    if (value > server.maximumBodySize) {
                         HttpServer.returnError(request, "Body is too large.", REQUEST_ENTITY_TOO_LARGE);
                         ctx.close();
                     }
                 }
                 content.retain();
-                body.add(content);
+                if (body == null) {
+                    body = new ArrayList<>(1);
+                    body.set(0, content);
+                }
+                else {
+                    body.add(content);
+                }
             }
         }
         else if (msg instanceof WebSocketFrame) {
-            routes.handle(ctx, (WebSocketFrame) msg);
+            server.routeMatcher.handle(ctx, (WebSocketFrame) msg);
         }
     }
 
     @Override
     public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause)
     {
-        uncaughtExceptionHandler.handle(request, cause);
+        server.uncaughtExceptionHandler.handle(request, cause);
         cause.printStackTrace();
         HttpServer.returnError(request, "An error occurred", INTERNAL_SERVER_ERROR);
         ctx.close();
-    }
-
-    protected static class DebugHttpServerHandler
-            extends ChannelInboundHandlerAdapter
-    {
-        private final ConcurrentSet<ChannelHandlerContext> activeChannels;
-        private final HttpServerHandler serverHandler;
-        final static AttributeKey<Integer> START_TIME = AttributeKey.valueOf("/start_time");
-
-        public DebugHttpServerHandler(ConcurrentSet<ChannelHandlerContext> activeChannels, HttpServerHandler handler)
-        {
-            this.activeChannels = activeChannels;
-            this.serverHandler = handler;
-        }
-
-        @Override
-        public void channelActive(ChannelHandlerContext ctx)
-                throws Exception
-        {
-            activeChannels.add(ctx);
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx)
-                throws Exception
-        {
-            activeChannels.remove(ctx);
-        }
-
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg)
-                throws Exception
-        {
-            serverHandler.channelRead(ctx, msg);
-
-            if (msg instanceof io.netty.handler.codec.http.HttpRequest) {
-                ctx.attr(RouteMatcher.PATH).set(serverHandler.request.path());
-                ctx.attr(START_TIME).set((int) (System.currentTimeMillis() / 1000));
-            }
-        }
     }
 
     private static class ReferenceCountedByteBufInputStream
@@ -238,11 +224,11 @@ public class HttpServerHandler
         @Override
         public int available()
         {
-            int remanining = cursor.capacity() - position;
+            int remaining = cursor.capacity() - position;
             for (int i = cursorPos; i < arrays.size(); i++) {
-                remanining += arrays.get(0).capacity();
+                remaining += arrays.get(0).capacity();
             }
-            return remanining;
+            return remaining;
         }
 
         @Override
@@ -273,9 +259,7 @@ public class HttpServerHandler
         public void close()
                 throws IOException
         {
-            for (ByteBuf buffer : arrays) {
-                buffer.release();
-            }
+            arrays.forEach(ReferenceCounted::release);
         }
     }
 }
