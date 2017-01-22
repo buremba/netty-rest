@@ -35,7 +35,6 @@ public class HttpServerHandler
     protected RakamHttpRequest request;
     private List<ByteBuf> body;
 
-
     public HttpServerHandler(ConcurrentSet activeChannels, HttpServer server)
     {
         this.server = server;
@@ -129,8 +128,10 @@ public class HttpServerHandler
             if (content.isReadable()) {
                 if (server.maximumBodySize > -1) {
                     long value = content.capacity();
-                    for (ByteBuf byteBuf : body) {
-                        value += byteBuf.capacity();
+                    if (body != null) {
+                        for (ByteBuf byteBuf : body) {
+                            value += byteBuf.capacity();
+                        }
                     }
                     if (value > server.maximumBodySize) {
                         HttpServer.returnError(request, "Body is too large.", REQUEST_ENTITY_TOO_LARGE);
