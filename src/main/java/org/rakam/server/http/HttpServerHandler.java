@@ -141,7 +141,7 @@ public class HttpServerHandler
                 content.retain();
                 if (body == null) {
                     body = new ArrayList<>(1);
-                    body.set(0, content);
+                    body.add(content);
                 }
                 else {
                     body.add(content);
