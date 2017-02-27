@@ -109,12 +109,12 @@ public class HttpServerHandler
                     }
 
                     content.retain();
-                    request.handleBody(input);
+                    handleBody(input);
                 }
                 else {
                     // even if body content is empty, call request.handleBody method.
                     if (request.getBodyHandler() != null) {
-                        request.handleBody(EMPTY_BODY);
+                        handleBody(EMPTY_BODY);
                     }
                 }
             }
@@ -149,8 +149,16 @@ public class HttpServerHandler
             }
         }
         else if (msg instanceof WebSocketFrame) {
+            server.markProcessing(request);
             server.routeMatcher.handle(ctx, (WebSocketFrame) msg);
+            server.unmarkProcessing(request);
         }
+    }
+
+    private void handleBody(InputStream body) {
+        server.markProcessing(request);
+        request.handleBody(body);
+        server.unmarkProcessing(request);
     }
 
     @Override
