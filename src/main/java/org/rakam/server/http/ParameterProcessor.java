@@ -33,6 +33,7 @@ import org.slf4j.LoggerFactory;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
+import java.math.BigDecimal;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
@@ -145,10 +146,10 @@ public class ParameterProcessor {
             p.setEnum((List<String>) args.get(PropertyBuilder.PropertyId.ENUM));
         } else {
             if (args.containsKey(PropertyBuilder.PropertyId.MINIMUM)) {
-                p.setMinimum((Double) args.get(PropertyBuilder.PropertyId.MINIMUM));
+                p.setMinimum((BigDecimal) args.get(PropertyBuilder.PropertyId.MINIMUM));
             }
             if (args.containsKey(PropertyBuilder.PropertyId.MAXIMUM)) {
-                p.setMaximum((Double) args.get(PropertyBuilder.PropertyId.MAXIMUM));
+                p.setMaximum((BigDecimal) args.get(PropertyBuilder.PropertyId.MAXIMUM));
             }
             if (args.containsKey(PropertyBuilder.PropertyId.EXCLUSIVE_MINIMUM)) {
                 p.setExclusiveMinimum((Boolean) args.get(PropertyBuilder.PropertyId.EXCLUSIVE_MINIMUM) ? true : null);

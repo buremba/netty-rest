@@ -26,7 +26,6 @@ public class HttpServerBuilder
     private Swagger swagger;
     private EventLoopGroup eventLoopGroup;
     private ObjectMapper mapper;
-    private boolean debugMode;
     private Map<Class, PrimitiveType> overridenMappings;
     private Builder<PreprocessorEntry> jsonRequestPreprocessors = ImmutableList.builder();
     private Builder<PostProcessorEntry> postProcessorEntryBuilder = ImmutableList.builder();
@@ -83,12 +82,6 @@ public class HttpServerBuilder
     public HttpServerBuilder setMapper(ObjectMapper mapper)
     {
         this.mapper = mapper;
-        return this;
-    }
-
-    public HttpServerBuilder setDebugMode(boolean debugMode)
-    {
-        this.debugMode = debugMode;
         return this;
     }
 
@@ -163,7 +156,6 @@ public class HttpServerBuilder
                 exceptionHandler,
                 customRequestParameters,
                 swaggerOperationConsumer,
-                debugMode,
                 useEpoll && Epoll.isAvailable(),
                 proxyProtocol, maximumBodySize);
     }

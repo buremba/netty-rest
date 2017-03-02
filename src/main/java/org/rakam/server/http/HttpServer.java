@@ -114,7 +114,6 @@ public class HttpServer
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
     private final List<PreprocessorEntry> preProcessors;
-    private final boolean debugMode;
     private final boolean proxyProtocol;
     private final List<PostProcessorEntry> postProcessors;
     final HttpServerBuilder.ExceptionHandler uncaughtExceptionHandler;
@@ -147,7 +146,6 @@ public class HttpServer
             HttpServerBuilder.ExceptionHandler exceptionHandler,
             Map<String, IRequestParameterFactory> customParameters,
             BiConsumer<Method, Operation> swaggerOperationConsumer,
-            boolean debugMode,
             boolean useEpoll,
             boolean proxyProtocol,
             long maximumBodySize)
@@ -159,7 +157,6 @@ public class HttpServer
         this.mapper = mapper;
         this.customParameters = customParameters;
         this.swaggerOperationConsumer = swaggerOperationConsumer;
-        this.debugMode = debugMode;
         this.uncaughtExceptionHandler = exceptionHandler == null ? (t, e) -> {
         } : exceptionHandler;
         this.postProcessors = postProcessors;
@@ -865,7 +862,7 @@ public class HttpServer
         public final int error_code;
 
         @JsonCreator
-        private ErrorMessage(@JsonProperty("error") String error, @JsonProperty("error_code") int error_code)
+        private ErrorMessage(@ApiParam("error") String error, @ApiParam("error_code") int error_code)
         {
             this.error = error;
             this.error_code = error_code;

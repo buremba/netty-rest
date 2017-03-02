@@ -54,7 +54,7 @@ public class ModelConverters {
     }
 
     public Map<String, Model> read(Type type) {
-        Map<String, Model> modelMap = new HashMap<String, Model>();
+        Map<String, Model> modelMap = new HashMap<>();
         if (shouldProcess(type)) {
             ModelConverterContextImpl context = new ModelConverterContextImpl(
                     converters);

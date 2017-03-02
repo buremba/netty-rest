@@ -1,7 +1,9 @@
 package org.rakam.server.http;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.core.Version;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.google.common.base.Throwables;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
@@ -43,7 +45,6 @@ import org.rakam.server.http.annotations.Authorization;
 import org.rakam.server.http.annotations.BodyParam;
 import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.IgnoreApi;
-import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.ResponseHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -96,6 +97,13 @@ public class SwaggerReader
         if (externalTypes != null) {
             setExternalTypes(externalTypes);
         }
+        mapper.registerModule(
+                new SimpleModule("swagger", Version.unknownVersion()) {
+                    @Override
+                    public void setupModule(SetupContext context) {
+                        context.insertAnnotationIntrospector(new SwaggerJacksonAnnotationIntrospector());
+                    }
+                });
         errorProperty = modelConverters.readAsProperty(HttpServer.ErrorMessage.class);
         swagger.addDefinition("ErrorMessage", modelConverters.read(HttpServer.ErrorMessage.class).entrySet().iterator().next().getValue());
     }
@@ -839,7 +847,7 @@ public class SwaggerReader
 
         Model model = swagger.getDefinitions().get(type.getSimpleName());
         if (model == null) {
-            modelConverters.read(type).forEach(swagger::addDefinition);
+            modelConverters.readAll(type).forEach(swagger::addDefinition);
         }
 
         return parameters;
@@ -858,6 +866,17 @@ public class SwaggerReader
             java.lang.reflect.Parameter parameter = parameters[i];
             if (parameter.isAnnotationPresent(ApiParam.class)) {
                 ApiParam ann = parameter.getAnnotation(ApiParam.class);
+
+                property.setRequired(ann.required());
+                if(!ann.description().isEmpty()) {
+                    property.description(ann.defaultValue());
+                }
+                if(!ann.access().isEmpty()) {
+                    property.setAccess(ann.defaultValue());
+                }
+                if(!ann.defaultValue().isEmpty()) {
+                    property.setDefault(ann.defaultValue());
+                }
 
                 model.addProperty(ann.value(), property);
                 if (property instanceof RefProperty) {

@@ -17,7 +17,7 @@
 
     <properties>
         <jackson.version>2.4.5</jackson.version>
-        <swagger.version>1.5.9</swagger.version>
+        <swagger.version>1.5.12</swagger.version>
         <netty.version>4.0.33.Final</netty.version>
         <air.version>0.117</air.version>
     </properties>
@@ -100,30 +100,6 @@
                     <autoVersionSubmodules>true</autoVersionSubmodules>
                 </configuration>
             </plugin>
-            <!--<plugin>-->
-                <!--<groupId>org.apache.maven.plugins</groupId>-->
-                <!--<artifactId>maven-shade-plugin</artifactId>-->
-                <!--<version>2.4.2</version>-->
-                <!--<executions>-->
-                    <!--<execution>-->
-                        <!--<phase>package</phase>-->
-                        <!--<goals>-->
-                            <!--<goal>shade</goal>-->
-                        <!--</goals>-->
-                        <!--<configuration>-->
-                            <!--<relocations>-->
-                                <!--<relocation>-->
-                                    <!--<pattern>io.swagger</pattern>-->
-                                    <!--<shadedPattern>io.swagger</shadedPattern>-->
-                                    <!--<excludes>-->
-                                        <!--<exclude>io.swagger.jackson.SwaggerAnnotationIntrospector</exclude>-->
-                                    <!--</excludes>-->
-                                <!--</relocation>-->
-                            <!--</relocations>-->
-                        <!--</configuration>-->
-                    <!--</execution>-->
-                <!--</executions>-->
-            <!--</plugin>-->
         </plugins>
     </build>
 
