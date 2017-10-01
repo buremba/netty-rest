@@ -312,14 +312,13 @@ public class HttpServer
         final List<RequestPreprocessor> preprocessorForJsonRequest = getPreprocessorRequest(method);
 
         if (bodyParams.size() == 0) {
-            final ObjectNode emptyNode = mapper.createObjectNode();
             final Function<HttpService, Object> lambda = Lambda.produceLambdaForFunction(method);
             return request -> {
                 Object invoke;
                 try {
                     if (!preprocessorForJsonRequest.isEmpty()) {
                         for (RequestPreprocessor preprocessor : preprocessorForJsonRequest) {
-                            preprocessor.handle(request, emptyNode);
+                            preprocessor.handle(request);
                         }
                     }
 
@@ -733,50 +732,6 @@ public class HttpServer
         channel.closeFuture().sync(); // Wait until the channel is closed.
     }
 
-    public static class Request
-    {
-        private final String uri;
-        private final List<Map.Entry<String, String>> entries;
-        private final String method;
-        private final String remoteAddress;
-        private final long runningTime;
-
-        public Request(String method, String uri, List<Map.Entry<String, String>> entries, String remoteAddress, long startTime)
-        {
-            this.method = method;
-            this.uri = uri;
-            this.remoteAddress = remoteAddress;
-            this.entries = entries;
-            this.runningTime = System.currentTimeMillis() - startTime;
-        }
-
-        public String getUri()
-        {
-            return uri;
-        }
-
-        @JsonInclude(JsonInclude.Include.NON_NULL)
-        public List<Map.Entry<String, String>> getEntries()
-        {
-            return entries;
-        }
-
-        public String getMethod()
-        {
-            return method;
-        }
-
-        public String getRemoteAddress()
-        {
-            return remoteAddress;
-        }
-
-        public long getRunningTime()
-        {
-            return runningTime;
-        }
-    }
-
     private ChannelFuture bindInternal(String host, int port)
             throws InterruptedException
     {
@@ -834,7 +789,7 @@ public class HttpServer
     static void applyPreprocessors(RakamHttpRequest request, List<RequestPreprocessor> preprocessors)
     {
         for (RequestPreprocessor preprocessor : preprocessors) {
-            preprocessor.handle(request, null);
+            preprocessor.handle(request);
         }
     }
 

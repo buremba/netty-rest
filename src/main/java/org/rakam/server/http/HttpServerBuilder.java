@@ -22,7 +22,7 @@ import java.util.function.Predicate;
 public class HttpServerBuilder
 {
     private Set<HttpService> httpServices;
-    private Set<WebSocketService> websockerServices;
+    private Set<WebSocketService> websocketServices;
     private Swagger swagger;
     private EventLoopGroup eventLoopGroup;
     private ObjectMapper mapper;
@@ -61,9 +61,9 @@ public class HttpServerBuilder
         return this;
     }
 
-    public HttpServerBuilder setWebsockerServices(Set<WebSocketService> websockerServices)
+    public HttpServerBuilder setWebsocketServices(Set<WebSocketService> websocketServices)
     {
-        this.websockerServices = websockerServices;
+        this.websocketServices = websocketServices;
         return this;
     }
 
@@ -138,15 +138,15 @@ public class HttpServerBuilder
         if (swagger == null) {
             swagger = new Swagger();
         }
-        if (websockerServices == null) {
-            websockerServices = ImmutableSet.of();
+        if (websocketServices == null) {
+            websocketServices = ImmutableSet.of();
         }
         if (customRequestParameters == null) {
             customRequestParameters = ImmutableMap.of();
         }
         return new HttpServer(
                 httpServices,
-                websockerServices,
+                websocketServices,
                 swagger,
                 eventLoopGroup,
                 jsonRequestPreprocessors.build(),

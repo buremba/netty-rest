@@ -98,7 +98,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         try {
             if(!jsonPreprocessors.isEmpty()) {
                 for (RequestPreprocessor preprocessor : jsonPreprocessors) {
-                    preprocessor.handle(request, node);
+                    preprocessor.handle(request);
                 }
             }
         } catch (Throwable e) {

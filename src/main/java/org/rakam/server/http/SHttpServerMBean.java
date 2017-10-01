@@ -4,6 +4,6 @@ import java.util.Map;
 
 public interface SHttpServerMBean
 {
-    Map<String, Long> getActiveRequests();
+    Map<String, String> getActiveRequests();
     long getActiveClientCount();
 }
