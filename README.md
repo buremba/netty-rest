@@ -36,7 +36,9 @@ public class HttpServerTest {
 
 And then run the following CURL command:
 
-`curl -X POST http://127.0.0.1:7847 -H 'content-type: application/json' -d '{"param1": "Hello", "param2": 2}'`
+`curl -X POST http://127.0.0.1:7847 \
+    -H 'content-type: application/json' \
+    -d '{"param1": "Hello", "param2": 2}'`
 
 If you don't pass one of the parameters, the server will return `400` response, you can also use complex java beans in parameters and method return signature. The library uses Jackson for serialization of the object that you passed and deserialization of the JSON attributes. It will be mapped to the parameters and the method will be invoked for the API calls.
 
