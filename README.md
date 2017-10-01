@@ -36,9 +36,11 @@ public class HttpServerTest {
 
 And then run the following CURL command:
 
-`curl -X POST http://127.0.0.1:7847 \
+```
+curl -X POST http://127.0.0.1:7847 \
     -H 'content-type: application/json' \
-    -d '{"param1": "Hello", "param2": 2}'`
+    -d '{"param1": "Hello", "param2": 2}'
+```
 
 If you don't pass one of the parameters, the server will return `400` response, you can also use complex java beans in parameters and method return signature. The library uses Jackson for serialization of the object that you passed and deserialization of the JSON attributes. It will be mapped to the parameters and the method will be invoked for the API calls.
 
@@ -118,6 +120,37 @@ public class HttpServerTest {
 
 # Authentication
 
+You can implement API key based authentification easily with custom parameters. Here is a simple example:
+
+```
+public class HttpServerTest {
+    public static void main(String[] args) throws Exception {
+        HttpServer build = new HttpServerBuilder()
+                .setCustomRequestParameters(ImmutableMap.of("projectId", method -> (node, request) -> {
+                    String apiKey = request.headers().get("api_key");
+                    try {
+                        return apiKeyService.findProject(apiKey);
+                    } catch (NotFoundException e) {
+                        throw new HttpRequestException("API key is invalid", HttpResponseStatus.FORBIDDEN);
+                    }
+                })).build();
+                .setHttpServices(new HashSet<>(Arrays.asList(new CustomHttpServer()))).build();
+
+        build.bindAwait("127.0.0.1", 7847);
+    }
+
+    @Path("/")
+    public static class CustomHttpServer extends HttpService {
+        @JsonRequest
+        @ApiOperation(value = "Parameter demo endpoint")
+        @Path("/list")
+        public List<String> testJsonParameter(@Named("projectId") int id) {
+            return db.getItemsForProject(id);
+        }
+    }
+}
+```
+
 
 # Request hooks
 You can add hooks to API calls before the methods are executed and also after they're executed. Here is an example:
@@ -191,6 +224,27 @@ HttpServer build = new HttpServerBuilder()
 # Swagger
 
 The library automatically generates the Swagger spec for you. You can see the specification in `/api/swagger.json` path. Here is a [real example](http://app.rakam.io/api/swagger.json). I also maintaion a [Slate documentation generator](https://github.com/buremba/swagger-slate) from Swagger specification. This library is compatible with the API documentation generator, [here is an example](http://api.rakam.io).
+
+You can set your Swagger instance using `HttpServerBuilder.setSwagger`. Here is an example:
+
+```
+Info info = new Info()
+        .title("My API Documentation")
+        .version("0.1")
+        .description("My great API")
+        .contact(new Contact().email("contact@product.com"))
+        .license(new License()
+                .name("Apache License 2.0")
+                .url("http://www.apache.org/licenses/LICENSE-2.0.html"));
+
+Swagger swagger = new Swagger().info(info)
+        .host("app.myapp.io")
+        .basePath("/")
+        .tags(ImmutableList.copyOf(tags))
+        .securityDefinition("api_key", new ApiKeyAuthDefinition().in(In.HEADER).name("api_key"));
+
+new HttpServerBuilder().setSwagger(swagger).build()
+```
 
 # Misc
 
