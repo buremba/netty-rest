@@ -37,7 +37,7 @@ public class HttpServerTest {
 And then run the following CURL command:
 
 ```
-curl -X POST http://127.0.0.1:7847 \
+curl -X POST http://127.0.0.1:7847/parameter \
     -H 'content-type: application/json' \
     -d '{"param1": "Hello", "param2": 2}'
 ```
