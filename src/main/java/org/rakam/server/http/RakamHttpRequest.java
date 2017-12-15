@@ -45,6 +45,7 @@ public class RakamHttpRequest
     private HttpRequest request;
     private FullHttpResponse response;
 
+
     @Override
     public boolean equals(Object o)
     {
@@ -84,6 +85,10 @@ public class RakamHttpRequest
     }
 
     @Override
+    public HttpMethod method(){ return request.getMethod(); }
+
+
+    @Override
     public HttpRequest setMethod(HttpMethod method)
     {
         return request.setMethod(method);
@@ -96,6 +101,10 @@ public class RakamHttpRequest
     }
 
     @Override
+    public String uri(){ return request.getUri();}
+
+
+    @Override
     public HttpRequest setUri(String uri)
     {
         return request.setUri(uri);
@@ -106,6 +115,10 @@ public class RakamHttpRequest
     {
         return request.getProtocolVersion();
     }
+
+    @Override
+    public HttpVersion protocolVersion(){ return request.getProtocolVersion(); }
+
 
     @Override
     public io.netty.handler.codec.http.HttpRequest setProtocolVersion(HttpVersion version)
@@ -125,10 +138,11 @@ public class RakamHttpRequest
     }
 
     @Override
-    public DecoderResult getDecoderResult()
-    {
-        return request.getDecoderResult();
-    }
+    public DecoderResult getDecoderResult() { return request.getDecoderResult(); }
+
+    @Override
+    public DecoderResult decoderResult(){return request.getDecoderResult();}
+
 
     protected Consumer<InputStream> getBodyHandler()
     {
