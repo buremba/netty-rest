@@ -119,7 +119,7 @@ public class HttpServerHandler
                 }
             }
             catch (HttpRequestException e) {
-                HttpServer.returnError(request, e.getMessage(), e.getStatusCode());
+                HttpServer.returnError(request, e);
             }
         }
         else if (msg instanceof HttpContent) {

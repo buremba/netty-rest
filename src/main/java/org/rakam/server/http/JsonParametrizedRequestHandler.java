@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.exc.InvalidFormatException;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Throwables;
+import com.google.common.collect.ImmutableList;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandle;
@@ -31,7 +32,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
 
     static {
         try {
-            bodyError = DEFAULT_MAPPER.writeValueAsString(errorMessage("Body must be an json object.", BAD_REQUEST));
+            bodyError = DEFAULT_MAPPER.writeValueAsString(new ErrorMessage(ImmutableList.of(JsonAPIError.title("Body must be an JSON object.")), null));
         } catch (JsonProcessingException e) {
             throw Throwables.propagate(e);
         }
