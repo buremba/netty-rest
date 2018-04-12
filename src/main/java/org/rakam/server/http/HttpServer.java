@@ -510,7 +510,7 @@ public class HttpServer {
             Type actualType = getActualType(service.getClass(), parameter.getParameterizedType());
             if (actualType.equals(String.class) || (actualType instanceof Class && primitiveMapper.containsKey(actualType))) {
                 return new IRequestParameter.QueryParameter(param.value(), param.required(),
-                        actualType.equals(String.class) ? (Function) Function.identity() : primitiveMapper.get(actualType));
+                        actualType.equals(String.class) ? Function.identity() : primitiveMapper.get(actualType));
             } else {
                 if (actualType instanceof Class && ((Class) actualType).isEnum()) {
                     return new IRequestParameter.QueryParameter(param.value(), param.required(),
@@ -572,6 +572,7 @@ public class HttpServer {
             if (apply instanceof Response) {
                 Response responseData = (Response) apply;
                 byte[] bytes = mapper.writeValueAsBytes(responseData.getData());
+
                 response = new DefaultFullHttpResponse(HTTP_1_1, responseData.getStatus(), Unpooled.wrappedBuffer(bytes));
 
                 if (responseData.getCookies() != null) {

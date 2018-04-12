@@ -19,14 +19,13 @@ import io.netty.handler.codec.http.HttpResponseStatus;
 import io.netty.handler.codec.http.HttpVersion;
 import io.netty.handler.codec.http.QueryStringDecoder;
 import io.netty.handler.codec.http.cookie.Cookie;
+import io.netty.handler.codec.http.cookie.ServerCookieEncoder;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.time.Duration;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Consumer;
 
 import static io.netty.handler.codec.http.HttpHeaders.Names.*;
@@ -44,6 +43,8 @@ public class RakamHttpRequest
     private final ChannelHandlerContext ctx;
     private HttpRequest request;
     private FullHttpResponse response;
+    private Map<String, String> responseHeaders;
+    private List<Cookie> responseCookies;
 
     @Override
     public boolean equals(Object o)
@@ -205,6 +206,22 @@ public class RakamHttpRequest
         return qs.path();
     }
 
+    private void addResponseCookie(Cookie cookie) {
+        if(responseCookies != null) {
+            responseCookies = new ArrayList<>();
+        }
+
+        responseCookies.add(cookie);
+    }
+
+    private void addResponseHeader(String key, String value) {
+        if(responseHeaders != null) {
+            responseHeaders = new HashMap<>();
+        }
+
+        responseHeaders.put(key, value);
+    }
+
     public void end()
     {
         if (body != null) {
@@ -226,6 +243,18 @@ public class RakamHttpRequest
         String origin = request.headers().get(ORIGIN);
         if (origin != null) {
             response.headers().set(ACCESS_CONTROL_ALLOW_ORIGIN, origin);
+        }
+
+        if(responseCookies != null) {
+            for (Cookie cookie : responseCookies) {
+                response.headers().add(SET_COOKIE, ServerCookieEncoder.STRICT.encode(cookie));
+            }
+        }
+
+        if(responseHeaders != null) {
+            for (Map.Entry<String, String> header : responseHeaders.entrySet()) {
+                response.headers().add(header.getKey(), header.getValue());
+            }
         }
 
         if (keepAlive) {
