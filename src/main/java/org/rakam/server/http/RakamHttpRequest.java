@@ -207,7 +207,7 @@ public class RakamHttpRequest
     }
 
     public void addResponseCookie(Cookie cookie) {
-        if(responseCookies != null) {
+        if(responseCookies == null) {
             responseCookies = new ArrayList<>();
         }
 
@@ -215,7 +215,7 @@ public class RakamHttpRequest
     }
 
     public void addResponseHeader(String key, String value) {
-        if(responseHeaders != null) {
+        if(responseHeaders == null) {
             responseHeaders = new HashMap<>();
         }
 
