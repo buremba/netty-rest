@@ -248,8 +248,8 @@ public class RakamHttpRequest
         return body;
     }
 
-    public StreamResponse streamResponse(Duration retryDuration) {
-        StreamResponse streamResponse = streamResponse();
+    public StreamResponse streamResponse(HttpResponse response, Duration retryDuration) {
+        StreamResponse streamResponse = streamResponse(response);
 
         ByteBuf msg = Unpooled.wrappedBuffer(("retry:" + retryDuration.toMillis() + "\n\n").getBytes(UTF_8));
         ctx.writeAndFlush(msg);
