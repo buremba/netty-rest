@@ -171,7 +171,7 @@ public class RakamHttpRequest
         return qs.path();
     }
 
-    private void addResponseCookie(Cookie cookie) {
+    public void addResponseCookie(Cookie cookie) {
         if (responseCookies != null) {
             responseCookies = new ArrayList<>();
         }
@@ -179,7 +179,7 @@ public class RakamHttpRequest
         responseCookies.add(cookie);
     }
 
-    private void addResponseHeader(String key, String value) {
+    public void addResponseHeader(String key, String value) {
         if (responseHeaders != null) {
             responseHeaders = new HashMap<>();
         }
