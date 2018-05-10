@@ -436,7 +436,7 @@ public class HttpServer {
                         objects[i + 1] = parameters[i].extract(json, request);
                     }
                 } catch (Exception e) {
-                    requestError(e, request, null);
+                    requestError(e, request, postProcessors);
                     return;
                 }
 
