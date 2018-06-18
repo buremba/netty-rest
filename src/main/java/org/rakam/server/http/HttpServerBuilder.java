@@ -35,6 +35,7 @@ public class HttpServerBuilder
     private BiConsumer<Method, Operation> swaggerOperationConsumer;
     private boolean useEpoll = true;
     private long maximumBodySize = -1;
+    private boolean enableDebugMode;
 
     public HttpServerBuilder setHttpServices(Set<HttpService> httpServices)
     {
@@ -109,6 +110,12 @@ public class HttpServerBuilder
         return this;
     }
 
+    public HttpServerBuilder enableDebugMode(boolean enableDebugMode)
+    {
+        this.enableDebugMode = enableDebugMode;
+        return this;
+    }
+
     public HttpServerBuilder setExceptionHandler(ExceptionHandler exceptionHandler)
     {
         this.exceptionHandler = exceptionHandler;
@@ -157,7 +164,9 @@ public class HttpServerBuilder
                 customRequestParameters,
                 swaggerOperationConsumer,
                 useEpoll && Epoll.isAvailable(),
-                proxyProtocol, maximumBodySize);
+                proxyProtocol,
+                maximumBodySize,
+                enableDebugMode);
     }
 
     public interface ExceptionHandler
