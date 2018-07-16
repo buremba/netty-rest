@@ -20,6 +20,7 @@
         <swagger.version>1.5.16</swagger.version>
         <netty.version>4.0.33.Final</netty.version>
         <air.version>0.117</air.version>
+        <dep.kotlin.version>1.2.31</dep.kotlin.version>
     </properties>
 
     <dependencies>
@@ -69,6 +70,18 @@
                     <artifactId>jackson-datatype-joda</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-stdlib</artifactId>
+            <version>${dep.kotlin.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains.kotlin</groupId>
+            <artifactId>kotlin-reflect</artifactId>
+            <version>${dep.kotlin.version}</version>
+            <scope>compile</scope>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

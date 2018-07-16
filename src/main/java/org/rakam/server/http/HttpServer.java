@@ -37,6 +37,9 @@ import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
 import io.swagger.util.Json;
 import io.swagger.util.PrimitiveType;
+import kotlin.reflect.KFunction;
+import kotlin.reflect.KParameter;
+import kotlin.reflect.jvm.ReflectJvmMapping;
 import org.rakam.server.http.HttpServerBuilder.IRequestParameterFactory;
 import org.rakam.server.http.IRequestParameter.BodyParameter;
 import org.rakam.server.http.IRequestParameter.HeaderParameter;
@@ -99,6 +102,7 @@ import static io.netty.util.CharsetUtil.UTF_8;
 import static java.lang.String.format;
 import static java.lang.invoke.MethodHandles.lookup;
 import static java.util.Objects.requireNonNull;
+import static org.rakam.server.http.SwaggerReader.getActualType;
 import static org.rakam.server.http.util.Lambda.produceLambdaForFunction;
 
 public class HttpServer
@@ -355,22 +359,6 @@ public class HttpServer
         }
     }
 
-    private Type getActualType(Class readClass, Type parameterizedType)
-    {
-        // if the parameter has a generic type, it will be read as Object
-        // so we need to find the actual implementation and return that type.
-        if (parameterizedType instanceof TypeVariableImpl) {
-            TypeVariable[] genericParameters = readClass.getSuperclass().getTypeParameters();
-            Type[] implementations = ((ParameterizedTypeImpl) readClass.getGenericSuperclass()).getActualTypeArguments();
-            for (int i = 0; i < genericParameters.length; i++) {
-                if (genericParameters[i].getName().equals(((TypeVariableImpl) parameterizedType).getName())) {
-                    return implementations[i];
-                }
-            }
-        }
-        return parameterizedType;
-    }
-
     private List<RequestPreprocessor> getPreprocessorRequest(Method method)
     {
         return preProcessors.stream()
@@ -612,13 +600,23 @@ public class HttpServer
                 strings = PARAMETER_LOOKUP.lookupParameterNames(method);
             }
             catch (Exception e) {
-                throw new IllegalStateException(String.format("Parameter %s in method % does not have @ApiParam annotation" +
-                        " and class bytecode doesn't have parameter name info.", parameter.toString(), method.toString()));
+                throw new IllegalStateException(String.format("Parameter %s in method % does not have @ApiParam annotation and class bytecode doesn't have parameter name info.", parameter.toString(), method.toString()));
+            }
+
+            int parameterIndex = Arrays.asList(method.getParameters()).indexOf(parameter);
+
+            boolean required;
+            KFunction<?> kotlinFunction = ReflectJvmMapping.getKotlinFunction(method);
+            if(kotlinFunction != null) {
+                KParameter kParameter = kotlinFunction.getParameters().get(parameterIndex + 1);
+                required = !kParameter.getType().isMarkedNullable();
+            } else {
+                required = false;
             }
 
             return new BodyParameter(mapper,
-                    strings[Arrays.asList(method.getParameters()).indexOf(parameter)],
-                    parameter.getParameterizedType(), false);
+                    strings[parameterIndex],
+                    parameter.getParameterizedType(), required);
         }
     }
 

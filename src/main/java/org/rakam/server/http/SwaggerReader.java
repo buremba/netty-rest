@@ -803,7 +803,7 @@ public class SwaggerReader
         return operation;
     }
 
-    private static Type getActualType(Class readClass, Type parameterizedType)
+    public static Type getActualType(Class readClass, Type parameterizedType)
     {
         // if the parameter has a generic type, it will be read as Object
         // so we need to find the actual implementation and return that type.
