@@ -50,8 +50,6 @@ import org.rakam.server.http.annotations.HeaderParam;
 import org.rakam.server.http.annotations.JsonRequest;
 import org.rakam.server.http.annotations.QueryParam;
 import org.rakam.server.http.util.Lambda;
-import sun.reflect.generics.reflectiveObjects.ParameterizedTypeImpl;
-import sun.reflect.generics.reflectiveObjects.TypeVariableImpl;
 
 import javax.inject.Named;
 import javax.management.InstanceAlreadyExistsException;
@@ -70,7 +68,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.Parameter;
 import java.lang.reflect.Type;
-import java.lang.reflect.TypeVariable;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -518,12 +515,17 @@ public class HttpServer
         }
     }
 
-    private static final ImmutableMap<Class<?>, Function<String, ?>> primitiveMapper = ImmutableMap.<Class<?>, Function<String, ?>>of(
-            int.class, Integer::parseInt,
-            long.class, Long::parseLong,
-            double.class, Double::parseDouble,
-            boolean.class, Boolean::parseBoolean,
-            float.class, Float::parseFloat);
+    private static final ImmutableMap<Class<?>, Function<String, ?>> PRIMITIVE_MAPPER = ImmutableMap.<Class<?>, Function<String, ?>>builder()
+            .put(int.class, Integer::parseInt)
+            .put(long.class, Long::parseLong)
+            .put(double.class, Double::parseDouble)
+            .put(boolean.class, Boolean::parseBoolean)
+            .put(float.class, Float::parseFloat)
+            .put(Integer.class, Integer::parseInt)
+            .put(Long.class, Long::parseLong)
+            .put(Double.class, Double::parseDouble)
+            .put(Boolean.class, Boolean::parseBoolean)
+            .put(Float.class, Float::parseFloat).build();
 
     private IRequestParameter getHandler(Parameter parameter, HttpService service, Method method)
     {
@@ -535,9 +537,9 @@ public class HttpServer
         else if (parameter.isAnnotationPresent(HeaderParam.class)) {
             HeaderParam param = parameter.getAnnotation(HeaderParam.class);
             Type actualType = getActualType(service.getClass(), parameter.getParameterizedType());
-            if (actualType.equals(String.class) || (actualType instanceof Class && primitiveMapper.containsKey(actualType))) {
+            if (actualType.equals(String.class) || (actualType instanceof Class && PRIMITIVE_MAPPER.containsKey(actualType))) {
                 return new HeaderParameter(param.value(), param.required(),
-                        actualType.equals(String.class) ? (Function) Function.identity() : primitiveMapper.get(actualType));
+                        actualType.equals(String.class) ? Function.identity() : PRIMITIVE_MAPPER.get(actualType));
             }
             else {
                 if (actualType instanceof Class && ((Class) actualType).isEnum()) {
@@ -580,9 +582,9 @@ public class HttpServer
         else if (parameter.isAnnotationPresent(QueryParam.class)) {
             QueryParam param = parameter.getAnnotation(QueryParam.class);
             Type actualType = getActualType(service.getClass(), parameter.getParameterizedType());
-            if (actualType.equals(String.class) || (actualType instanceof Class && primitiveMapper.containsKey(actualType))) {
+            if (actualType.equals(String.class) || (actualType instanceof Class && PRIMITIVE_MAPPER.containsKey(actualType))) {
                 return new IRequestParameter.QueryParameter(param.value(), param.required(),
-                        actualType.equals(String.class) ? Function.identity() : primitiveMapper.get(actualType));
+                        actualType.equals(String.class) ? Function.identity() : PRIMITIVE_MAPPER.get(actualType));
             }
             else {
                 if (actualType instanceof Class && ((Class) actualType).isEnum()) {
