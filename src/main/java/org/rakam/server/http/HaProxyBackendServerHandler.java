@@ -5,12 +5,14 @@ import io.netty.handler.codec.haproxy.HAProxyMessage;
 import io.netty.util.AttributeKey;
 import io.netty.util.internal.ConcurrentSet;
 
+import java.util.List;
+
 public class HaProxyBackendServerHandler extends HttpServerHandler {
     AttributeKey<String> CLIENT_IP = AttributeKey.valueOf("ip");
 
 
-    public HaProxyBackendServerHandler(ConcurrentSet activeChannels, HttpServer httpServer) {
-        super(activeChannels, httpServer);
+    public HaProxyBackendServerHandler(ConcurrentSet activeChannels, HttpServer httpServer, List<PostProcessorEntry> postProcessors) {
+        super(activeChannels, httpServer, postProcessors);
     }
 
     @Override

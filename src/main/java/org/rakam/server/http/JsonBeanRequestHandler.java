@@ -25,18 +25,15 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
     private final boolean isAsync;
     private final HttpService service;
     private final List<RequestPreprocessor> requestPreprocessors;
-    private final List<ResponsePostProcessor> postProcessors;
     private final HttpServer httpServer;
     private final BiFunction function;
 
     public JsonBeanRequestHandler(HttpServer httpServer, ObjectMapper mapper, Method method,
                                   List<RequestPreprocessor> requestPreprocessors,
-                                  List<ResponsePostProcessor> postProcessors,
                                   HttpService service) {
         this.httpServer = httpServer;
         this.mapper = mapper;
         this.service = service;
-        this.postProcessors = postProcessors;
 
         function = Lambda.produceLambdaForBiFunction(method);
 
@@ -79,7 +76,7 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                     }
                 }
             } catch (Throwable e) {
-                httpServer.requestError(e, request, postProcessors);
+                httpServer.requestError(e, request);
                 return;
             }
 
@@ -88,12 +85,12 @@ public class JsonBeanRequestHandler implements HttpRequestHandler {
                 try {
                     apply = (CompletionStage) function.apply(service, json);
                 } catch (Throwable e) {
-                    httpServer.requestError(e, request, postProcessors);
+                    httpServer.requestError(e, request);
                     return;
                 }
-                httpServer.handleAsyncJsonRequest(mapper, request, apply, postProcessors);
+                httpServer.handleAsyncJsonRequest(mapper, request, apply);
             } else {
-                httpServer.handleJsonRequest(mapper, service, request, (service) -> function.apply(service, json), postProcessors);
+                httpServer.handleJsonRequest(mapper, service, request, (service) -> function.apply(service, json));
             }
         });
     }

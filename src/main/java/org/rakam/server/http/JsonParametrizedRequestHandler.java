@@ -39,14 +39,12 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         emptyObject = DEFAULT_MAPPER.createObjectNode();
     }
 
-    private final List<ResponsePostProcessor> postProcessors;
     private final HttpServer httpServer;
     private final boolean isJson;
 
     public JsonParametrizedRequestHandler(HttpServer httpServer, ObjectMapper mapper,
                                           List<IRequestParameter> bodyParams,
                                           MethodHandle methodHandle,
-                                          List<ResponsePostProcessor> postProcessors,
                                           HttpService service,
                                           List<RequestPreprocessor> jsonPreprocessors,
                                           boolean isAsync, boolean isJson) {
@@ -55,7 +53,6 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         this.bodyParams = bodyParams;
         this.methodHandle = methodHandle;
         this.service = service;
-        this.postProcessors = postProcessors;
         this.isAsync = isAsync;
         this.jsonPreprocessors = jsonPreprocessors;
         this.isJson = isJson;
@@ -109,7 +106,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
                 }
             }
         } catch (Throwable e) {
-            httpServer.requestError(e, request, postProcessors);
+            httpServer.requestError(e, request);
             return;
         }
 
@@ -121,7 +118,7 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
             try {
                 value = param.extract(node, request);
             } catch (Exception e) {
-                httpServer.requestError(e, request, postProcessors);
+                httpServer.requestError(e, request);
                 return;
             }
 
@@ -132,12 +129,12 @@ public class JsonParametrizedRequestHandler implements HttpRequestHandler {
         try {
             invoke = methodHandle.invokeWithArguments(values);
         } catch (Throwable e) {
-            httpServer.requestError(e, request, postProcessors);
+            httpServer.requestError(e, request);
             return;
         }
 
         if (isJson) {
-            httpServer.handleRequest(mapper, isAsync, invoke, request, postProcessors);
+            httpServer.handleRequest(mapper, isAsync, invoke, request);
         }
     }
 }

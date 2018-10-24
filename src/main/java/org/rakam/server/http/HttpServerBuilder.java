@@ -56,9 +56,9 @@ public class HttpServerBuilder
         return this;
     }
 
-    public HttpServerBuilder addPostProcessor(ResponsePostProcessor processor, Predicate<Method> predicate)
+    public HttpServerBuilder addPostProcessor(ResponsePostProcessor processor)
     {
-        postProcessorEntryBuilder.add(new PostProcessorEntry(processor, predicate));
+        postProcessorEntryBuilder.add(new PostProcessorEntry(processor));
         return this;
     }
 

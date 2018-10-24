@@ -31,6 +31,7 @@ public class RakamHttpRequest
     private final static InputStream REQUEST_DONE_STREAM = new InvalidInputStream();
 
     private final ChannelHandlerContext ctx;
+    private final List<PostProcessorEntry> postProcessors;
     private HttpRequest request;
     private FullHttpResponse response;
     private Map<String, String> responseHeaders;
@@ -47,8 +48,9 @@ public class RakamHttpRequest
     private QueryStringDecoder qs;
     private String remoteAddress;
 
-    public RakamHttpRequest(ChannelHandlerContext ctx) {
+    public RakamHttpRequest(ChannelHandlerContext ctx, List<PostProcessorEntry> postProcessors) {
         this.ctx = ctx;
+        this.postProcessors = postProcessors;
     }
 
     void setRequest(HttpRequest request) {
@@ -220,6 +222,11 @@ public class RakamHttpRequest
             }
         }
 
+        for (PostProcessorEntry postProcessor : postProcessors) {
+            postProcessor.getProcessor().handle(response);
+        }
+
+
         if (keepAlive) {
             response.headers().set(CONTENT_LENGTH, response.content().readableBytes());
             response.headers().set(CONNECTION, HttpHeaders.Values.KEEP_ALIVE);
@@ -323,8 +330,7 @@ public class RakamHttpRequest
             extends InputStream {
 
         @Override
-        public int read()
-                throws IOException {
+        public int read() {
             throw new UnsupportedOperationException();
         }
     }

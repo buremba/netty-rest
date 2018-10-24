@@ -40,7 +40,11 @@ public interface IRequestParameter<T>
                 throw new HttpRequestException("'" + name + "' header parameter is required.", BAD_REQUEST);
             }
 
-            return mapper.apply(value);
+            try {
+                return mapper.apply(value);
+            } catch (Exception e) {
+                throw new HttpRequestException(String.format("Unable to parse header parameter %s", name), BAD_REQUEST);
+            }
         }
     }
 
@@ -101,7 +105,11 @@ public interface IRequestParameter<T>
                 }
             }
 
-            return mapper.apply(strings.get(0));
+            try {
+                return mapper.apply(strings.get(0));
+            } catch (Exception e) {
+                throw new HttpRequestException(String.format("Unable to parse query parameter %s", name), BAD_REQUEST);
+            }
         }
     }
 

@@ -298,12 +298,9 @@ public class HttpServer
     private HttpRequestHandler getJsonRequestHandler(Method method, HttpService service)
     {
         final List<RequestPreprocessor> preprocessorRequest = getPreprocessorRequest(method);
-        List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         if (method.getParameterCount() == 1 && method.getParameters()[0].isAnnotationPresent(BodyParam.class)) {
-            return new JsonBeanRequestHandler(this, mapper, method,
-                    getPreprocessorRequest(method), postProcessors,
-                    service);
+            return new JsonBeanRequestHandler(this, mapper, method, getPreprocessorRequest(method), service);
         }
 
         ArrayList<IRequestParameter> bodyParams = new ArrayList<>();
@@ -333,11 +330,11 @@ public class HttpServer
                     invoke = lambda.apply(service);
                 }
                 catch (Throwable e) {
-                    requestError(e.getCause(), request, postProcessors);
+                    requestError(e.getCause(), request);
                     return;
                 }
 
-                handleRequest(mapper, isAsync, invoke, request, postProcessors);
+                handleRequest(mapper, isAsync, invoke, request);
             };
         }
         else {
@@ -351,7 +348,7 @@ public class HttpServer
             }
 
             return new JsonParametrizedRequestHandler(this, mapper, bodyParams,
-                    methodHandle, postProcessors, service,
+                    methodHandle, service,
                     preprocessorForJsonRequest, isAsync, !method.getReturnType().equals(void.class));
         }
     }
@@ -364,17 +361,16 @@ public class HttpServer
 
     private List<ResponsePostProcessor> getPostPreprocessorsRequest(Method method)
     {
-        return postProcessors.stream()
-                .filter(p -> p.test(method)).map(PostProcessorEntry::getProcessor).collect(Collectors.toList());
+        return postProcessors.stream().map(PostProcessorEntry::getProcessor).collect(Collectors.toList());
     }
 
-    void handleRequest(ObjectMapper mapper, boolean isAsync, Object invoke, RakamHttpRequest request, List<ResponsePostProcessor> postProcessors)
+    void handleRequest(ObjectMapper mapper, boolean isAsync, Object invoke, RakamHttpRequest request)
     {
         if (isAsync) {
-            handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke, postProcessors);
+            handleAsyncJsonRequest(mapper, request, (CompletionStage) invoke);
         }
         else {
-            returnJsonResponse(mapper, request, OK, invoke, postProcessors);
+            returnJsonResponse(mapper, request, OK, invoke);
         }
     }
 
@@ -388,7 +384,6 @@ public class HttpServer
     private HttpRequestHandler generateRawRequestHandler(HttpService service, Method method)
     {
         List<RequestPreprocessor> requestPreprocessors = getPreprocessorRequest(method);
-        List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         // we don't need to pass service object is the method is static.
         // it's also better for performance since there will be only one object to send the stack.
@@ -404,7 +399,7 @@ public class HttpServer
                     lambda.accept(request);
                 }
                 catch (Exception e) {
-                    requestError(e, request, postProcessors);
+                    requestError(e, request);
                 }
             };
         }
@@ -416,7 +411,7 @@ public class HttpServer
                     lambda.accept(service, request);
                 }
                 catch (Exception e) {
-                    requestError(e, request, postProcessors);
+                    requestError(e, request);
                 }
             };
         }
@@ -427,7 +422,6 @@ public class HttpServer
         boolean isAsync = CompletionStage.class.isAssignableFrom(method.getReturnType());
 
         final List<RequestPreprocessor> preprocessors = getPreprocessorRequest(method);
-        List<ResponsePostProcessor> postProcessors = getPostPreprocessorsRequest(method);
 
         if (method.getParameterCount() == 0) {
             Function<HttpService, Object> function = produceLambdaForFunction(method);
@@ -438,7 +432,7 @@ public class HttpServer
                     }
                 }
                 catch (Throwable e) {
-                    requestError(e, request, postProcessors);
+                    requestError(e, request);
                     return;
                 }
 
@@ -448,13 +442,13 @@ public class HttpServer
                         apply = (CompletionStage) function.apply(service);
                     }
                     catch (Exception e) {
-                        requestError(e.getCause(), request, postProcessors);
+                        requestError(e.getCause(), request);
                         return;
                     }
-                    handleAsyncJsonRequest(mapper, request, apply, postProcessors);
+                    handleAsyncJsonRequest(mapper, request, apply);
                 }
                 else {
-                    handleJsonRequest(mapper, service, request, function, postProcessors);
+                    handleJsonRequest(mapper, service, request, function);
                 }
             };
         }
@@ -479,7 +473,7 @@ public class HttpServer
                     }
                 }
                 catch (Throwable e) {
-                    requestError(e, request, postProcessors);
+                    requestError(e, request);
                     return;
                 }
 
@@ -493,7 +487,7 @@ public class HttpServer
                     }
                 }
                 catch (Exception e) {
-                    requestError(e, request, postProcessors);
+                    requestError(e, request);
                     return;
                 }
 
@@ -503,13 +497,13 @@ public class HttpServer
                         apply = (CompletionStage) methodHandle.invokeWithArguments(objects);
                     }
                     catch (Throwable e) {
-                        requestError(e.getCause(), request, postProcessors);
+                        requestError(e.getCause(), request);
                         return;
                     }
-                    handleAsyncJsonRequest(mapper, request, apply, postProcessors);
+                    handleAsyncJsonRequest(mapper, request, apply);
                 }
                 else {
-                    handleJsonRequest(mapper, request, methodHandle, objects, postProcessors);
+                    handleJsonRequest(mapper, request, methodHandle, objects);
                 }
             };
         }
@@ -622,41 +616,40 @@ public class HttpServer
         }
     }
 
-    void handleJsonRequest(ObjectMapper mapper, RakamHttpRequest request, MethodHandle methodHandle, Object[] arguments, List<ResponsePostProcessor> postProcessors)
+    void handleJsonRequest(ObjectMapper mapper, RakamHttpRequest request, MethodHandle methodHandle, Object[] arguments)
     {
         try {
             Object apply = methodHandle.invokeWithArguments(arguments);
-            returnJsonResponse(mapper, request, OK, apply, postProcessors);
+            returnJsonResponse(mapper, request, OK, apply);
         }
         catch (HttpRequestException e) {
             uncaughtExceptionHandler.handle(request, e);
             HttpResponseStatus statusCode = e.getStatusCode();
-            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(e.getErrors(), e.getMeta()), postProcessors);
+            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(e.getErrors(), e.getMeta()));
         }
         catch (Throwable e) {
             uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
 
-            returnJsonResponse(mapper, request, BAD_REQUEST, getErrorMessage(e), postProcessors);
+            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR, getErrorMessage(e));
         }
     }
 
-    void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function, List<ResponsePostProcessor> postProcessors)
+    void handleJsonRequest(ObjectMapper mapper, HttpService serviceInstance, RakamHttpRequest request, Function<HttpService, Object> function)
     {
         try {
             Object apply = function.apply(serviceInstance);
-            returnJsonResponse(mapper, request, OK, apply, postProcessors);
+            returnJsonResponse(mapper, request, OK, apply);
         }
         catch (HttpRequestException ex) {
             uncaughtExceptionHandler.handle(request, ex);
             HttpResponseStatus statusCode = ex.getStatusCode();
-            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(ex.getErrors(), ex.getMeta()), postProcessors);
+            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(ex.getErrors(), ex.getMeta()));
         }
         catch (Throwable e) {
             uncaughtExceptionHandler.handle(request, e);
             LOGGER.error(e, "An uncaught exception raised while processing request.");
-            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR,
-                    getErrorMessage(e), postProcessors);
+            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR, getErrorMessage(e));
         }
     }
 
@@ -674,7 +667,7 @@ public class HttpServer
         }
     }
 
-    private static void returnJsonResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply, List<ResponsePostProcessor> postProcessors)
+    private static void returnJsonResponse(ObjectMapper mapper, RakamHttpRequest request, HttpResponseStatus status, Object apply)
     {
         FullHttpResponse response;
         try {
@@ -698,23 +691,10 @@ public class HttpServer
             throw new RuntimeException("couldn't serialize object", e);
         }
         response.headers().set(CONTENT_TYPE, "application/json; charset=utf-8");
-
-        if (postProcessors != null) {
-            applyPostProcessors(response, postProcessors);
-        }
         request.response(response).end();
     }
 
-    static void applyPostProcessors(FullHttpResponse httpResponse, List<ResponsePostProcessor> postProcessors)
-    {
-        if (!postProcessors.isEmpty()) {
-            for (ResponsePostProcessor postProcessor : postProcessors) {
-                postProcessor.handle(httpResponse);
-            }
-        }
-    }
-
-    void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply, List<ResponsePostProcessor> postProcessors)
+    void handleAsyncJsonRequest(ObjectMapper mapper, RakamHttpRequest request, CompletionStage apply)
     {
         if (apply == null) {
             NullPointerException e = new NullPointerException();
@@ -729,10 +709,10 @@ public class HttpServer
                 }
                 uncaughtExceptionHandler.handle(request, ex);
 
-                requestError(ex, request, postProcessors);
+                requestError(ex, request);
             }
             else {
-                returnJsonResponse(mapper, request, OK, result, postProcessors);
+                returnJsonResponse(mapper, request, OK, result);
             }
         });
     }
@@ -780,10 +760,10 @@ public class HttpServer
                         HttpServerHandler handler;
                         if (proxyProtocol) {
                             p.addLast(new HAProxyMessageDecoder());
-                            handler = new HaProxyBackendServerHandler(activeChannels, HttpServer.this);
+                            handler = new HaProxyBackendServerHandler(activeChannels, HttpServer.this, postProcessors);
                         }
                         else {
-                            handler = new HttpServerHandler(activeChannels, HttpServer.this);
+                            handler = new HttpServerHandler(activeChannels, HttpServer.this, postProcessors);
                         }
 
                         // make it configurable
@@ -887,16 +867,16 @@ public class HttpServer
         }
     }
 
-    void requestError(Throwable ex, RakamHttpRequest request, List<ResponsePostProcessor> postProcessors)
+    void requestError(Throwable ex, RakamHttpRequest request)
     {
         uncaughtExceptionHandler.handle(request, ex);
         if (ex instanceof HttpRequestException) {
             HttpRequestException httpEx = (HttpRequestException) ex;
             HttpResponseStatus statusCode = httpEx.getStatusCode();
-            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(httpEx.getErrors(), httpEx.getMeta()), postProcessors);
+            returnJsonResponse(mapper, request, statusCode, new ErrorMessage(httpEx.getErrors(), httpEx.getMeta()));
         }
         else {
-            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR, getErrorMessage(ex), postProcessors);
+            returnJsonResponse(mapper, request, INTERNAL_SERVER_ERROR, getErrorMessage(ex));
             LOGGER.error(ex, "Error while processing request");
         }
     }

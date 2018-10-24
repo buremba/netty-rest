@@ -32,30 +32,30 @@ public class HttpServerHandler
 
     private final HttpServer server;
     private final ConcurrentSet activeChannels;
+    private final List<PostProcessorEntry> postProcessors;
     protected RakamHttpRequest request;
     private List<ByteBuf> body;
 
-    public HttpServerHandler(ConcurrentSet activeChannels, HttpServer server)
+    public HttpServerHandler(ConcurrentSet activeChannels, HttpServer server, List<PostProcessorEntry> postProcessors)
     {
         this.server = server;
         this.activeChannels = activeChannels;
+        this.postProcessors = postProcessors;
     }
 
     RakamHttpRequest createRequest(ChannelHandlerContext ctx)
     {
-        return new RakamHttpRequest(ctx);
+        return new RakamHttpRequest(ctx, postProcessors);
     }
 
     @Override
     public void channelActive(ChannelHandlerContext ctx)
-            throws Exception
     {
         activeChannels.add(ctx);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx)
-            throws Exception
     {
         activeChannels.remove(ctx);
     }
@@ -134,6 +134,8 @@ public class HttpServerHandler
                         }
                     }
                     if (value > server.maximumBodySize) {
+                        String errorMessage = "Body is too large";
+                        server.uncaughtExceptionHandler.handle(request, new HttpRequestException(errorMessage, REQUEST_ENTITY_TOO_LARGE));
                         HttpServer.returnError(request, "Body is too large.", REQUEST_ENTITY_TOO_LARGE);
                         ctx.close();
                     }
