@@ -4,7 +4,7 @@
 
     <groupId>org.rakam</groupId>
     <artifactId>netty-rest</artifactId>
-    <version>0.106-SNAPSHOT</version>
+    <version>0.106</version>
     <packaging>jar</packaging>
 
     <licenses>
@@ -166,7 +166,7 @@
         <connection>scm:git:https://github.com/buremba/netty-rest.git</connection>
         <developerConnection>scm:git:git@github.com:buremba/netty-rest.git</developerConnection>
         <url>https://github.com/buremba/netty-rest</url>
-        <tag>HEAD</tag>
+        <tag>netty-rest-0.106</tag>
     </scm>
 
     <distributionManagement>
