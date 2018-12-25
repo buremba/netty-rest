@@ -155,6 +155,7 @@ public class HttpServerHandler
             server.routeMatcher.handle(ctx, (WebSocketFrame) msg);
             server.unmarkProcessing(request);
         }
+        ctx.fireChannelRead(msg);
     }
 
     private void handleBody(InputStream body) {

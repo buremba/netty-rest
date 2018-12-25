@@ -11,6 +11,7 @@ import com.thoughtworks.paranamer.BytecodeReadingParanamer;
 import io.airlift.log.Logger;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.ByteBufAllocator;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -24,14 +25,14 @@ import io.netty.channel.epoll.EpollServerSocketChannel;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
+import io.netty.handler.codec.compression.ZlibCodecFactory;
+import io.netty.handler.codec.compression.ZlibWrapper;
 import io.netty.handler.codec.haproxy.HAProxyMessageDecoder;
-import io.netty.handler.codec.http.DefaultFullHttpResponse;
-import io.netty.handler.codec.http.FullHttpResponse;
-import io.netty.handler.codec.http.HttpMethod;
-import io.netty.handler.codec.http.HttpResponseStatus;
-import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.*;
 import io.netty.handler.logging.LogLevel;
 import io.netty.handler.logging.LoggingHandler;
+import io.netty.handler.stream.ChunkedWriteHandler;
+import io.netty.handler.timeout.ReadTimeoutHandler;
 import io.netty.util.internal.ConcurrentSet;
 import io.swagger.models.Operation;
 import io.swagger.models.Swagger;
@@ -111,6 +112,7 @@ public class HttpServer
     public final RouteMatcher routeMatcher;
     private final Swagger swagger;
 
+    private static final int DEFAULT_MAX_CONTENT_LENGTH = 20480000;
     private final ObjectMapper mapper;
     private final EventLoopGroup bossGroup;
     private final EventLoopGroup workerGroup;
@@ -757,17 +759,22 @@ public class HttpServer
                             throws Exception
                     {
                         ChannelPipeline p = ch.pipeline();
-                        HttpServerHandler handler;
-                        if (proxyProtocol) {
-                            p.addLast(new HAProxyMessageDecoder());
-                            handler = new HaProxyBackendServerHandler(activeChannels, HttpServer.this, postProcessors);
-                        }
-                        else {
-                            handler = new HttpServerHandler(activeChannels, HttpServer.this, postProcessors);
-                        }
 
-                        // make it configurable
-                        p.addLast("httpCodec", new HttpServerCodec(36192 * 2, 36192 * 8, 36192 * 16));
+                        p.addLast("decoder", new HttpRequestDecoder());
+                        p.addLast("inflater", new HttpContentDecompressor());
+
+                        // Outbound handlers
+                        p.addLast("encoder", new HttpResponseEncoder());
+                        p.addLast("chunkWriter", new ChunkedWriteHandler());
+
+                        p.addLast("deflater", new HttpContentCompressor());
+
+                        // Aggregator MUST be added last, otherwise results are not correct
+                        p.addLast("aggregator", new HttpObjectAggregator(DEFAULT_MAX_CONTENT_LENGTH));
+
+
+
+                        HttpServerHandler handler = new HttpServerHandler(activeChannels, HttpServer.this, postProcessors);
                         p.addLast("serverHandler", handler);
                     }
                 });
