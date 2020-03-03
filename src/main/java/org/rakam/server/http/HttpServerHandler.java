@@ -184,22 +184,24 @@ public class HttpServerHandler
         }
 
         @Override
+        public synchronized void reset() {
+            buffer.resetReaderIndex();
+        }
+
+        @Override
         public int available()
-                throws IOException
         {
             return buffer.readableBytes();
         }
 
         @Override
         public int read()
-                throws IOException
         {
             return buffer.readByte();
         }
 
         @Override
         public int read(byte[] b, int off, int len)
-                throws IOException
         {
             int available = available();
             if (available == 0) {
@@ -244,7 +246,6 @@ public class HttpServerHandler
 
         @Override
         public int read()
-                throws IOException
         {
             if (cursor.capacity() == position) {
                 if (arrays.size() == cursorPos) {
@@ -268,7 +269,6 @@ public class HttpServerHandler
 
         @Override
         public void close()
-                throws IOException
         {
             arrays.forEach(ReferenceCounted::release);
         }
