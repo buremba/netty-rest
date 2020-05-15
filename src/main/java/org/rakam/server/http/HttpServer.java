@@ -170,7 +170,7 @@ public class HttpServer
         this.bossGroup = useEpoll ? new EpollEventLoopGroup(1) : new NioEventLoopGroup(1);
         registerEndPoints(requireNonNull(httpServicePlugins, "httpServices is null"), overriddenMappings);
         registerWebSocketPaths(requireNonNull(websocketServices, "webSocketServices is null"));
-        routeMatcher.add(GET, "/api/swagger.json", this::swaggerApiHandle);
+//        routeMatcher.add(GET, "/api/swagger.json", this::swaggerApiHandle);
         this.useEpoll = useEpoll && Epoll.isAvailable();
         this.processingRequests = new ConcurrentHashMap<>();
     }
@@ -230,7 +230,7 @@ public class HttpServer
         SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerOperationConsumer, swaggerBeanMappings);
 
         httpServicePlugins.forEach(service -> {
-            reader.read(service.getClass());
+//            reader.read(service.getClass());
             if (!service.getClass().isAnnotationPresent(Path.class)) {
                 throw new IllegalStateException(format("HttpService class %s must have javax.ws.rs.Path annotation", service.getClass()));
             }

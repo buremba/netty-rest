@@ -207,7 +207,7 @@ public class SwaggerReader
                         operation = parseMethod(cls, method);
                     }
                     catch (Exception e) {
-                        LOGGER.warn("Unable to read method " + method.toString(), e);
+                        LOGGER.debug("Unable to read method " + method.toString(), e);
                     }
 
                     if (operation == null) {
