@@ -2,20 +2,15 @@ package org.rakam.server.http;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
-import io.swagger.converter.ModelConverter;
-import io.swagger.converter.ModelConverterContextImpl;
-import io.swagger.jackson.ModelResolver;
-import io.swagger.models.Model;
-import io.swagger.models.properties.Property;
+import io.swagger.v3.core.converter.AnnotatedType;
+import io.swagger.v3.core.converter.ModelConverter;
+import io.swagger.v3.core.converter.ModelConverterContextImpl;
+import io.swagger.v3.core.jackson.ModelResolver;
+import io.swagger.v3.oas.models.media.Schema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.lang.reflect.Type;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class ModelConverters {
@@ -30,7 +25,7 @@ public class ModelConverters {
         converters.add(e);
     }
 
-    public void addConverter(ModelConverter converter) {
+    public void addConverter(io.swagger.v3.core.converter.ModelConverter converter) {
         converters.add(0, converter);
     }
 
@@ -47,18 +42,17 @@ public class ModelConverters {
         this.skippedClasses.add(cls);
     }
 
-    public Property readAsProperty(Type type) {
-        ModelConverterContextImpl context = new ModelConverterContextImpl(
-                converters);
-        return context.resolveProperty(type, null);
+    public Schema readAsProperty(AnnotatedType type) {
+        ModelConverterContextImpl context = new ModelConverterContextImpl(converters);
+        return context.resolve(type);
     }
 
-    public Map<String, Model> read(Type type) {
-        Map<String, Model> modelMap = new HashMap<>();
+    public Map<String, Schema> read(AnnotatedType type) {
+        Map<String, Schema> modelMap = new HashMap();
         if (shouldProcess(type)) {
             ModelConverterContextImpl context = new ModelConverterContextImpl(
                     converters);
-            Model resolve = context.resolve(type);
+            Schema resolve = context.resolve(type);
             context.getDefinedModels()
                     .entrySet().stream().filter(entry -> entry.getValue().equals(resolve))
                     .forEach(entry -> modelMap.put(entry.getKey(), entry.getValue()));
@@ -66,7 +60,7 @@ public class ModelConverters {
         return modelMap;
     }
 
-    public Map<String, Model> readAll(Type type) {
+    public Map<String, Schema> readAll(AnnotatedType type) {
         if (shouldProcess(type)) {
             ModelConverterContextImpl context = new ModelConverterContextImpl(
                     converters);
@@ -78,8 +72,8 @@ public class ModelConverters {
         return new HashMap<>();
     }
 
-    private boolean shouldProcess(Type type) {
-        final Class<?> cls = TypeFactory.defaultInstance().constructType(type).getRawClass();
+    private boolean shouldProcess(AnnotatedType type) {
+        final Class<?> cls = TypeFactory.defaultInstance().constructType(type.getType()).getRawClass();
         if (cls.isPrimitive()) {
             return false;
         }

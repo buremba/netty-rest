@@ -9,9 +9,9 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.Epoll;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
-import io.swagger.models.Operation;
-import io.swagger.models.Swagger;
-import io.swagger.util.PrimitiveType;
+import io.swagger.v3.core.util.PrimitiveType;
+import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Operation;
 
 import java.lang.reflect.Method;
 import java.util.Map;
@@ -23,7 +23,7 @@ public class HttpServerBuilder
 {
     private Set<HttpService> httpServices;
     private Set<WebSocketService> websocketServices;
-    private Swagger swagger;
+    private OpenAPI swagger;
     private EventLoopGroup eventLoopGroup;
     private ObjectMapper mapper;
     private Map<Class, PrimitiveType> overridenMappings;
@@ -68,7 +68,7 @@ public class HttpServerBuilder
         return this;
     }
 
-    public HttpServerBuilder setSwagger(Swagger swagger)
+    public HttpServerBuilder setSwagger(OpenAPI swagger)
     {
         this.swagger = swagger;
         return this;
@@ -143,7 +143,7 @@ public class HttpServerBuilder
             eventLoopGroup = useEpoll ? new EpollEventLoopGroup() : new NioEventLoopGroup();
         }
         if (swagger == null) {
-            swagger = new Swagger();
+            swagger = new OpenAPI();
         }
         if (websocketServices == null) {
             websocketServices = ImmutableSet.of();

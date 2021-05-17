@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class HttpServerTest {
 
-    //    @Test
+        @Test
     public void testName() throws Exception {
 
         HttpServer build = new HttpServerBuilder()
