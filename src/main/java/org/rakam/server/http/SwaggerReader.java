@@ -97,13 +97,6 @@ public class SwaggerReader
         if (externalTypes != null) {
             setExternalTypes(externalTypes);
         }
-        mapper.registerModule(
-                new SimpleModule("swagger", Version.unknownVersion()) {
-                    @Override
-                    public void setupModule(SetupContext context) {
-                        context.insertAnnotationIntrospector(new SwaggerJacksonAnnotationIntrospector());
-                    }
-                });
         errorProperty = modelConverters.readAsProperty(HttpServer.ErrorMessage.class);
         swagger.addDefinition("ErrorMessage", modelConverters.read(HttpServer.ErrorMessage.class).entrySet().iterator().next().getValue());
     }

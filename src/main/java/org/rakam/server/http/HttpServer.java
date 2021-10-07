@@ -219,18 +219,7 @@ public class HttpServer
 
     private void registerEndPoints(Set<HttpService> httpServicePlugins, Map<Class, PrimitiveType> overriddenMappings)
     {
-        Map<Class, PrimitiveType> swaggerBeanMappings;
-        if (overriddenMappings != null) {
-            swaggerBeanMappings = ImmutableMap.<Class, PrimitiveType>builder().putAll(this.swaggerBeanMappings).putAll(overriddenMappings).build();
-        }
-        else {
-            swaggerBeanMappings = this.swaggerBeanMappings;
-        }
-
-        SwaggerReader reader = new SwaggerReader(swagger, mapper, swaggerOperationConsumer, swaggerBeanMappings);
-
         httpServicePlugins.forEach(service -> {
-//            reader.read(service.getClass());
             if (!service.getClass().isAnnotationPresent(Path.class)) {
                 throw new IllegalStateException(format("HttpService class %s must have javax.ws.rs.Path annotation", service.getClass()));
             }
