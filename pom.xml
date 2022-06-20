@@ -20,7 +20,7 @@
         <swagger.version>1.5.16</swagger.version>
         <netty.version>4.0.33.Final</netty.version>
         <air.version>0.117</air.version>
-        <dep.kotlin.version>1.2.31</dep.kotlin.version>
+        <dep.kotlin.version>1.6.0</dep.kotlin.version>
     </properties>
 
     <dependencies>
